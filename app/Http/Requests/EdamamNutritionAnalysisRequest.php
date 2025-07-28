@@ -22,6 +22,7 @@ class EdamamNutritionAnalysisRequest extends FormRequest
         return [
             'ingredients' => 'required|array|min:1|max:20',
             'ingredients.*' => 'required|string|max:500',
+            'product_id' => 'sometimes|integer|exists:products,id',
             'nutrition_type' => 'sometimes|string|in:cooking,logging',
             'meal_type' => 'sometimes|array',
             'meal_type.*' => 'string|in:Breakfast,Lunch,Dinner,Snack,Teatime',
@@ -54,6 +55,8 @@ class EdamamNutritionAnalysisRequest extends FormRequest
             'ingredients.*.required' => 'Each ingredient cannot be empty.',
             'ingredients.*.string' => 'Each ingredient must be a string.',
             'ingredients.*.max' => 'Each ingredient cannot exceed 500 characters.',
+            'product_id.integer' => 'Product ID must be a valid integer.',
+            'product_id.exists' => 'The specified product does not exist.',
             'nutrition_type.in' => 'Nutrition type must be either "cooking" or "logging".',
             'meal_type.*.in' => 'Invalid meal type provided.',
             'dish_type.*.in' => 'Invalid dish type provided.',

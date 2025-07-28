@@ -172,7 +172,7 @@ class EdamamConfigService
             'User-Agent' => 'Laravel-Food-Management-System/1.0',
         ];
 
-        // Add userID header if configured
+        // Add Edamam-Account-User header as required by the API
         $userId = config('services.edamam.user_id');
         if (!empty($userId)) {
             $headers['Edamam-Account-User'] = $userId;

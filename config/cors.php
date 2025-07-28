@@ -15,7 +15,7 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'storage/*'],
 
     'allowed_methods' => ['*'],
 
@@ -23,9 +23,15 @@ return [
         'http://localhost:3000',
         'http://localhost:8080',
         'http://localhost:8081',
+        'http://localhost:8082',
+        'http://localhost:8083',
+        'http://localhost:8084',
         'http://127.0.0.1:3000',
         'http://127.0.0.1:8080',
         'http://127.0.0.1:8081',
+        'http://127.0.0.1:8082',
+        'http://127.0.0.1:8083',
+        'http://127.0.0.1:8084',
     ],
 
     'allowed_origins_patterns' => [],

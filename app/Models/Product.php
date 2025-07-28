@@ -24,6 +24,7 @@ class Product extends Model
         'servings_per_container',
         'is_public',
         'is_pinned',
+        'is_favorite',
         'status',
         'image_url',
         'image_path',
@@ -34,6 +35,7 @@ class Product extends Model
         'tags' => 'array',
         'is_public' => 'boolean',
         'is_pinned' => 'boolean',
+        'is_favorite' => 'boolean',
         'serving_size' => 'decimal:2',
         'servings_per_container' => 'integer',
     ];
@@ -59,6 +61,11 @@ class Product extends Model
                     ->orderBy('order');
     }
 
+    public function nutritionAutoTags(): HasMany
+    {
+        return $this->hasMany(NutritionAutoTag::class);
+    }
+
     public function nutritionalData(): HasMany
     {
         return $this->hasMany(NutritionalData::class);
@@ -67,6 +74,15 @@ class Product extends Model
     public function labels(): HasMany
     {
         return $this->hasMany(Label::class);
+    }
+
+    /**
+     * Get the collections that contain this product.
+     */
+    public function collections(): BelongsToMany
+    {
+        return $this->belongsToMany(Collection::class)
+            ->withTimestamps();
     }
 
     /**

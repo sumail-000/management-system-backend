@@ -7,19 +7,30 @@ use App\Http\Resources\EdamamNutritionResource;
 use App\Http\Resources\EdamamNutritionCollection;
 use App\Http\Resources\EdamamErrorResource;
 use App\Services\EdamamNutritionService;
+use App\Services\NutritionDataTransformationService;
+use App\Models\NutritionalData;
+use App\Models\Product;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class EdamamNutritionController extends Controller
 {
     protected EdamamNutritionService $nutritionService;
+    protected NutritionDataTransformationService $transformationService;
     
-    public function __construct(EdamamNutritionService $nutritionService)
-    {
+    public function __construct(
+        EdamamNutritionService $nutritionService,
+        NutritionDataTransformationService $transformationService
+    ) {
         $this->nutritionService = $nutritionService;
+        $this->transformationService = $transformationService;
     }
     
     /**
@@ -32,13 +43,23 @@ class EdamamNutritionController extends Controller
     {
         try {
             $data = $request->validated();
+            $productId = $data['product_id'] ?? null;
+            
+            // Map 'ingredients' to 'ingr' for service compatibility
+            if (isset($data['ingredients'])) {
+                $data['ingr'] = $data['ingredients'];
+                unset($data['ingredients']);
+            }
+            
+            // Create cache data excluding product_id
+            $cacheData = array_diff_key($data, ['product_id' => '']);
             
             // Generate cache key for nutrition analysis
-            $cacheKey = 'nutrition_analysis_' . md5(json_encode($data));
+            $cacheKey = 'nutrition_analysis_' . md5(json_encode($cacheData));
             
             // Check cache first (cache for 1 hour)
-            $result = Cache::remember($cacheKey, 3600, function () use ($data) {
-                return $this->nutritionService->analyzeNutrition($data);
+            $result = Cache::remember($cacheKey, 3600, function () use ($cacheData) {
+                return $this->nutritionService->analyzeNutrition($cacheData);
             });
             
             if (isset($result['error'])) {
@@ -47,6 +68,10 @@ class EdamamNutritionController extends Controller
                     $result['status'] ?? 400
                 );
             }
+            
+
+            
+
             
             return response()->json([
                 'success' => true,
@@ -71,6 +96,8 @@ class EdamamNutritionController extends Controller
             );
         }
     }
+    
+
     
     /**
      * Batch analyze nutrition for multiple ingredient sets
@@ -154,6 +181,8 @@ class EdamamNutritionController extends Controller
             );
         }
     }
+    
+
     
     /**
      * Get nutrition analysis history
@@ -244,4 +273,156 @@ class EdamamNutritionController extends Controller
             );
         }
     }
+    
+    /**
+     * Check if nutrition data exists for a product and user
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function checkNutritionData(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'product_id' => 'required|exists:products,id'
+            ]);
+
+            $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
+                ->where('user_id', auth()->id())
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'exists' => $nutritionData !== null,
+                'data' => $nutritionData ? $nutritionData->toFrontendStructure() : null
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Error checking nutrition data: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'error' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to check nutrition data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Load nutrition data for a product and user
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function loadNutritionData(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'product_id' => 'required|exists:products,id'
+            ]);
+
+            $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
+                ->where('user_id', auth()->id())
+                ->first();
+
+            if (!$nutritionData) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No nutrition data found for this product'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Nutrition data loaded successfully',
+                'data' => $nutritionData->toFrontendStructure()
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Error loading nutrition data: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'error' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to load nutrition data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save nutrition analysis data
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function saveNutritionData(Request $request): JsonResponse
+    {
+        try {
+            // Validate the frontend request structure
+            $validated = $request->validate([
+                'product_id' => 'required|exists:products,id',
+                'basic_nutrition' => 'required|array',
+                'basic_nutrition.total_calories' => 'required|numeric',
+                'basic_nutrition.servings' => 'required|numeric',
+                'basic_nutrition.weight_per_serving' => 'required|numeric',
+                'macronutrients' => 'required|array',
+                'macronutrients.protein' => 'required|numeric',
+                'macronutrients.carbohydrates' => 'required|numeric',
+                'macronutrients.fat' => 'required|numeric',
+                'macronutrients.fiber' => 'required|numeric',
+                'micronutrients' => 'required|array',
+                'daily_values' => 'required|array',
+                'health_labels' => 'nullable|array',
+                'diet_labels' => 'nullable|array',
+                'allergens' => 'nullable|array',
+                'warnings' => 'nullable|array',
+                'high_nutrients' => 'nullable|array',
+                'nutrition_summary' => 'nullable|array',
+                'analysis_metadata' => 'required|array',
+                'analysis_metadata.analyzed_at' => 'required|string',
+                'analysis_metadata.ingredient_query' => 'required|string',
+                'analysis_metadata.product_name' => 'nullable|string',
+            ]);
+
+            // Create nutrition data using the new model method
+            $savedData = NutritionalData::createFromFrontendData($validated);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Nutrition data saved successfully',
+                'data' => $savedData->toFrontendStructure()
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (Exception $e) {
+            Log::error('Error saving nutrition data: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'error' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save nutrition data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

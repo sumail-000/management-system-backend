@@ -253,6 +253,23 @@ class EdamamRecipeService
     }
 
     /**
+     * Get recipe-specific headers (includes Edamam-Account-User for recipe API only)
+     *
+     * @return array
+     */
+    private function getRecipeHeaders(): array
+    {
+        $headers = $this->configService->getDefaultHeaders();
+        
+        // Add Edamam-Account-User header specifically for recipe API
+        // This is required by the Recipe Search API but not by other Edamam APIs
+        $userId = config('services.edamam.user_id', 'food-management-user');
+        $headers['Edamam-Account-User'] = $userId;
+        
+        return $headers;
+    }
+
+    /**
      * Make recipe search API request
      *
      * @param string $query
@@ -286,7 +303,7 @@ class EdamamRecipeService
             $queryParams['to'] = 20;
         }
 
-        $headers = $this->configService->getDefaultHeaders();
+        $headers = $this->getRecipeHeaders();
         $retryConfig = $this->configService->getRetryConfig();
         $timeout = $this->configService->getRequestTimeout();
 
@@ -319,7 +336,7 @@ class EdamamRecipeService
             'app_key' => $this->config['app_key']
         ];
 
-        $headers = $this->configService->getDefaultHeaders();
+        $headers = $this->getRecipeHeaders();
         $retryConfig = $this->configService->getRetryConfig();
         $timeout = $this->configService->getRequestTimeout();
 
@@ -362,7 +379,7 @@ class EdamamRecipeService
                 'total' => $count,
                 'has_more' => $to < $count
             ],
-            'recipes' => array_map(function ($hit) {
+            'data' => array_map(function ($hit) {
                 return $this->formatRecipe($hit['recipe'] ?? []);
             }, $hits),
             '_links' => $response['_links'] ?? []

@@ -22,7 +22,7 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
-        $query = $user->products()->with(['ingredients', 'nutritionalData', 'category']);
+        $query = $user->products()->with(['ingredients', 'category', 'nutritionalData']);
 
         // Apply filters
         if ($request->has('category_id')) {
@@ -155,7 +155,8 @@ class ProductController extends Controller
                 'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // 5MB max
                 'ingredients' => 'nullable|array',
                 'ingredients.*.id' => 'nullable|string',
-                'ingredients.*.name' => 'required|string|max:255',
+                'ingredients.*.name' => 'required_without:ingredients.*.text|string|max:255',
+                'ingredients.*.text' => 'required_without:ingredients.*.name|string|max:500',
                 'ingredients.*.quantity' => 'nullable|numeric|min:0',
                 'ingredients.*.unit' => 'nullable|string|max:50',
                 'ingredient_notes' => 'nullable|string|max:2000',
@@ -202,7 +203,7 @@ class ProductController extends Controller
             $this->syncProductIngredients($product, $ingredientsData);
         }
         
-        $product->load(['ingredients', 'nutritionalData', 'category']);
+        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData']);
 
         return response()->json($product, 201);
     }
@@ -214,7 +215,7 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
-        $product = Product::with(['ingredients', 'nutritionalData', 'labels', 'user:id,name,email', 'category'])
+        $product = Product::with(['ingredients', 'nutritionAutoTags', 'labels', 'user:id,name,email', 'category', 'nutritionalData', 'collections'])
             ->where('user_id', $user->id)
             ->findOrFail($id);
 
@@ -246,7 +247,8 @@ class ProductController extends Controller
             'image_file' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'ingredients' => 'nullable|array',
             'ingredients.*.id' => 'nullable|string',
-            'ingredients.*.name' => 'required|string|max:255',
+            'ingredients.*.name' => 'required_without:ingredients.*.text|string|max:255',
+            'ingredients.*.text' => 'required_without:ingredients.*.name|string|max:500',
             'ingredients.*.quantity' => 'nullable|numeric|min:0',
             'ingredients.*.unit' => 'nullable|string|max:50',
             'ingredient_notes' => 'nullable|string|max:2000',
@@ -306,7 +308,7 @@ class ProductController extends Controller
             $this->syncProductIngredients($product, $ingredientsData);
         }
         
-        $product->load(['ingredients', 'nutritionalData', 'category']);
+        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData']);
 
         return response()->json($product);
     }
@@ -348,24 +350,48 @@ class ProductController extends Controller
         $syncData = [];
         
         foreach ($ingredientsData as $index => $ingredientData) {
-            $ingredientName = trim($ingredientData['name']);
-            
-            if (empty($ingredientName)) {
-                continue;
+            // Handle both old structured format and new free text format
+            if (isset($ingredientData['text'])) {
+                // New free text format
+                $ingredientText = trim($ingredientData['text']);
+                
+                if (empty($ingredientText)) {
+                    continue;
+                }
+                
+                // Find or create ingredient using the full text as name
+                $ingredient = Ingredient::firstOrCreate(
+                    ['name' => $ingredientText],
+                    ['description' => null]
+                );
+                
+                // Add to sync data with order (no amount/unit for free text)
+                $syncData[$ingredient->id] = [
+                    'order' => $index + 1,
+                    'amount' => null,
+                    'unit' => null
+                ];
+            } else {
+                // Legacy structured format (for backward compatibility)
+                $ingredientName = trim($ingredientData['name'] ?? '');
+                
+                if (empty($ingredientName)) {
+                    continue;
+                }
+                
+                // Find or create ingredient
+                $ingredient = Ingredient::firstOrCreate(
+                    ['name' => $ingredientName],
+                    ['description' => null]
+                );
+                
+                // Add to sync data with order, amount (quantity), and unit
+                $syncData[$ingredient->id] = [
+                    'order' => $index + 1,
+                    'amount' => isset($ingredientData['quantity']) ? (float)$ingredientData['quantity'] : null,
+                    'unit' => $ingredientData['unit'] ?? null
+                ];
             }
-            
-            // Find or create ingredient
-            $ingredient = Ingredient::firstOrCreate(
-                ['name' => $ingredientName],
-                ['description' => null]
-            );
-            
-            // Add to sync data with order, amount (quantity), and unit
-            $syncData[$ingredient->id] = [
-                'order' => $index + 1,
-                'amount' => isset($ingredientData['quantity']) ? (float)$ingredientData['quantity'] : null,
-                'unit' => $ingredientData['unit'] ?? null
-            ];
         }
         
         // Sync ingredients with the product
@@ -377,7 +403,7 @@ class ProductController extends Controller
      */
     public function public(Request $request): JsonResponse
     {
-        $query = Product::with(['ingredients', 'nutritionalData', 'user:id,name,company', 'category'])
+        $query = Product::with(['ingredients', 'nutritionAutoTags', 'user:id,name,company', 'category'])
             ->where('is_public', true);
 
         // Apply filters
@@ -406,7 +432,7 @@ class ProductController extends Controller
      */
     public function getPublicById(string $id): JsonResponse
     {
-        $product = Product::with(['ingredients', 'nutritionalData', 'user:id,name,company', 'category'])
+        $product = Product::with(['ingredients', 'nutritionAutoTags', 'user:id,name,company', 'category'])
             ->where('is_public', true)
             ->findOrFail($id);
 
@@ -486,7 +512,7 @@ class ProductController extends Controller
             }
         }
         
-        $duplicatedProduct->load(['ingredients', 'nutritionalData', 'category']);
+        $duplicatedProduct->load(['ingredients', 'nutritionAutoTags', 'category']);
         
         return response()->json($duplicatedProduct, 201);
     }
@@ -506,6 +532,79 @@ class ProductController extends Controller
             'message' => $product->is_pinned ? 'Product pinned successfully' : 'Product unpinned successfully',
             'is_pinned' => $product->is_pinned
         ]);
+    }
+
+    /**
+     * Toggle favorite status of a product
+     */
+    public function toggleFavorite(string $id): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        $product = Product::where('user_id', $user->id)->findOrFail($id);
+        
+        $product->update(['is_favorite' => !$product->is_favorite]);
+        
+        return response()->json([
+            'message' => $product->is_favorite ? 'Product added to favorites' : 'Product removed from favorites',
+            'is_favorite' => $product->is_favorite
+        ]);
+    }
+
+    /**
+     * Get favorited products
+     */
+    public function getFavorites(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        
+        $query = $user->products()
+            ->where('is_favorite', true)
+            ->with(['ingredients', 'nutritionAutoTags', 'category']);
+        
+        // Apply search filter
+        if ($request->has('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhereJsonContains('tags', $search);
+            });
+        }
+        
+        // Apply category filter
+        if ($request->has('category') && $request->category !== 'all') {
+            $query->whereHas('category', function ($q) use ($request) {
+                $q->where('name', $request->category);
+            });
+        }
+        
+        // Apply sorting
+        $sortBy = $request->get('sort_by', 'updated_at');
+        $sortOrder = $request->get('sort_order', 'desc');
+        
+        switch ($sortBy) {
+            case 'name':
+                $query->orderBy('name', $sortOrder);
+                break;
+            case 'created_at':
+                $query->orderBy('created_at', $sortOrder);
+                break;
+            case 'category':
+                $query->join('categories', 'products.category_id', '=', 'categories.id')
+                      ->orderBy('categories.name', $sortOrder)
+                      ->select('products.*');
+                break;
+            default:
+                $query->orderBy('updated_at', $sortOrder);
+                break;
+        }
+        
+        $perPage = $request->get('per_page', 15);
+        $products = $query->paginate($perPage);
+        
+        return response()->json($products);
     }
 
     /**
@@ -572,7 +671,7 @@ class ProductController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
-        $query = $user->products()->onlyTrashed()->with(['ingredients', 'nutritionalData', 'category']);
+        $query = $user->products()->onlyTrashed()->with(['ingredients', 'nutritionAutoTags', 'category']);
         
         if ($request->has('search')) {
             $search = $request->search;
@@ -762,5 +861,237 @@ class ProductController extends Controller
             'display_text' => $formattedQuantity . $suggestedUnit,
             'is_different' => $suggestedUnit !== $currentUnit
         ]);
+    }
+
+    /**
+     * Get product metrics for selected products
+     */
+    public function getMetrics(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        
+        $validated = $request->validate([
+            'product_ids' => 'required|array',
+            'product_ids.*' => 'integer|exists:products,id'
+        ]);
+        
+        $productIds = $validated['product_ids'];
+        
+        // Verify user owns these products
+        $userProducts = $user->products()->whereIn('id', $productIds)->pluck('id')->toArray();
+        if (count($userProducts) !== count($productIds)) {
+            return response()->json([
+                'message' => 'Some products do not belong to the authenticated user'
+            ], 403);
+        }
+        
+        try {
+            // Get total ingredients count
+            $totalIngredients = $user->products()
+                ->whereIn('id', $productIds)
+                ->withCount('ingredients')
+                ->get()
+                ->sum('ingredients_count');
+            
+            // Get auto-tagged products count (products with nutrition data that have health_labels)
+            $autoTaggedCount = $user->products()
+                ->whereIn('id', $productIds)
+                ->whereHas('nutritionAutoTags', function($query) {
+                    $query->whereNotNull('health_labels')
+                          ->where('health_labels', '!=', '[]')
+                          ->where('health_labels', '!=', 'null');
+                })
+                ->count();
+            
+            // Get products with notes count
+            $withNotesCount = $user->products()
+                ->whereIn('id', $productIds)
+                ->whereNotNull('ingredient_notes')
+                ->where('ingredient_notes', '!=', '')
+                ->count();
+            
+            // Get allergens found count (products with nutrition data that have allergens)
+            $allergensFoundCount = $user->products()
+                ->whereIn('id', $productIds)
+                ->whereHas('nutritionAutoTags', function($query) {
+                    $query->whereNotNull('allergens')
+                          ->where('allergens', '!=', '[]')
+                          ->where('allergens', '!=', 'null');
+                })
+                ->count();
+            
+            $metrics = [
+                'total_ingredients' => $totalIngredients,
+                'auto_tagged' => $autoTaggedCount,
+                'with_notes' => $withNotesCount,
+                'allergens_found' => $allergensFoundCount
+            ];
+            
+            Log::info('Product metrics calculated', [
+                'user_id' => $user->id,
+                'product_ids' => $productIds,
+                'metrics' => $metrics
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $metrics
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Failed to calculate product metrics', [
+                'user_id' => $user->id,
+                'product_ids' => $productIds,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to calculate product metrics'
+            ], 500);
+        }
+    }
+
+    /**
+     * Extract and validate image URL from various sources (including Google search results)
+     */
+    public function extractImageUrl(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'url' => 'required|url|max:2048'
+        ]);
+
+        $url = $validated['url'];
+        $result = [
+            'original_url' => $url,
+            'is_google_url' => false,
+            'extracted_url' => null,
+            'is_valid_image' => false,
+            'message' => '',
+            'error' => null
+        ];
+
+        try {
+            // Check if it's a Google search result URL
+            if ($this->isGoogleSearchUrl($url)) {
+                $result['is_google_url'] = true;
+                $extractedUrl = $this->extractImageUrlFromGoogle($url);
+                
+                if ($extractedUrl) {
+                    $result['extracted_url'] = $extractedUrl;
+                    $result['is_valid_image'] = $this->isValidImageUrl($extractedUrl);
+                    
+                    if ($result['is_valid_image']) {
+                        $result['message'] = 'Google search URL detected. Successfully extracted direct image URL.';
+                    } else {
+                        $result['message'] = 'Google search URL detected, but extracted URL may not be a valid image.';
+                    }
+                } else {
+                    $result['message'] = 'Google search URL detected, but could not extract direct image URL. Please copy the image address directly.';
+                }
+            } else {
+                // Direct URL validation
+                $result['is_valid_image'] = $this->isValidImageUrl($url);
+                $result['extracted_url'] = $url;
+                
+                if ($result['is_valid_image']) {
+                    $result['message'] = 'Valid image URL detected.';
+                } else {
+                    $result['message'] = 'URL provided, but it may not be a direct image URL.';
+                }
+            }
+        } catch (\Exception $e) {
+            $result['error'] = 'Failed to process URL: ' . $e->getMessage();
+            Log::error('Image URL extraction failed', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return response()->json($result);
+    }
+
+    /**
+     * Check if URL is a Google search result URL
+     */
+    private function isGoogleSearchUrl(string $url): bool
+    {
+        return strpos($url, 'google.com') !== false && 
+               (strpos($url, '/imgres?') !== false || strpos($url, '/url?') !== false);
+    }
+
+    /**
+     * Extract direct image URL from Google search result URL
+     */
+    private function extractImageUrlFromGoogle(string $url): ?string
+    {
+        // Parse the URL to get query parameters
+        $parsedUrl = parse_url($url);
+        if (!isset($parsedUrl['query'])) {
+            return null;
+        }
+
+        parse_str($parsedUrl['query'], $queryParams);
+        
+        // Try to get the image URL from different Google URL formats
+        if (isset($queryParams['imgurl'])) {
+            return urldecode($queryParams['imgurl']);
+        }
+        
+        if (isset($queryParams['url'])) {
+            return urldecode($queryParams['url']);
+        }
+        
+        // Try to extract from imgres format
+        if (strpos($url, 'imgurl=') !== false) {
+            preg_match('/imgurl=([^&]+)/', $url, $matches);
+            if (isset($matches[1])) {
+                return urldecode($matches[1]);
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Validate if URL is likely a direct image URL
+     */
+    private function isValidImageUrl(string $url): bool
+    {
+        // Check file extension
+        $path = parse_url($url, PHP_URL_PATH);
+        if ($path) {
+            $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $validExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+            if (in_array($extension, $validExtensions)) {
+                return true;
+            }
+        }
+        
+        // Check for common image hosting domains
+        $host = parse_url($url, PHP_URL_HOST);
+        if ($host) {
+            $imageHosts = [
+                'images.unsplash.com',
+                'cdn.pixabay.com',
+                'images.pexels.com',
+                'i.imgur.com',
+                'cdn.shopify.com',
+                'images-na.ssl-images-amazon.com',
+                'target.scene7.com',
+                'walmart.com',
+                'costco.com'
+            ];
+            
+            foreach ($imageHosts as $imageHost) {
+                if (strpos($host, $imageHost) !== false) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 }

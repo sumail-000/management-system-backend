@@ -168,7 +168,11 @@ class EdamamNutritionService
             $queryParams['field'] = $options['field'];
         }
 
+        // Get default headers but exclude Edamam-Account-User for nutrition API
         $headers = $this->configService->getDefaultHeaders();
+        
+        // Remove Edamam-Account-User header as nutrition API doesn't support users
+        unset($headers['Edamam-Account-User']);
         
         // Add optional headers
         if (isset($options['account_user'])) {

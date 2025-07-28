@@ -6,6 +6,7 @@ use App\Http\Requests\EdamamRecipeSearchRequest;
 use App\Http\Resources\EdamamRecipeResource;
 use App\Http\Resources\EdamamRecipeCollection;
 use App\Http\Resources\EdamamErrorResource;
+use App\Http\Resources\FormattedRecipeResource;
 use App\Services\EdamamRecipeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,12 +34,17 @@ class EdamamRecipeController extends Controller
         try {
             $data = $request->validated();
             
+            // Extract query and filters
+            $query = $data['q'] ?? '';
+            $filters = $data;
+            unset($filters['q']); // Remove query from filters
+            
             // Generate cache key for recipe search
             $cacheKey = 'recipe_search_' . md5(json_encode($data));
             
             // Check cache first (cache for 2 hours)
-            $result = Cache::remember($cacheKey, 7200, function () use ($data) {
-                return $this->recipeService->searchRecipes($data);
+            $result = Cache::remember($cacheKey, 7200, function () use ($query, $filters) {
+                return $this->recipeService->searchRecipes($query, $filters);
             });
             
             if (isset($result['error'])) {
@@ -51,25 +57,25 @@ class EdamamRecipeController extends Controller
             // Check if this is a single recipe detail request
             if ($request->isRecipeDetailRequest()) {
                 return response()->json([
-                    'success' => true,
-                    'data' => new EdamamRecipeResource($result),
-                    'meta' => [
-                        'type' => 'recipe_detail',
-                        'cached' => Cache::has($cacheKey),
-                        'timestamp' => now()->toISOString(),
-                        'request_id' => $request->header('X-Request-ID', uniqid())
-                    ]
-                ]);
+                'success' => true,
+                'data' => new FormattedRecipeResource($result),
+                'meta' => [
+                    'type' => 'recipe_detail',
+                    'cached' => Cache::has($cacheKey),
+                    'timestamp' => now()->toISOString(),
+                    'request_id' => $request->header('X-Request-ID', uniqid())
+                ]
+            ]);
             }
             
             return response()->json([
                 'success' => true,
-                'data' => new EdamamRecipeCollection($result['hits'] ?? []),
-                'pagination' => $request->getPaginationParams(),
+                'data' => new EdamamRecipeCollection($result['data'] ?? []),
+                'pagination' => $result['pagination'] ?? $request->getPaginationParams(),
                 'meta' => [
                     'type' => 'recipe_search',
                     'search_params' => $data,
-                    'total_results' => $result['count'] ?? 0,
+                    'total_results' => $result['pagination']['total'] ?? 0,
                     'cached' => Cache::has($cacheKey),
                     'timestamp' => now()->toISOString(),
                     'request_id' => $request->header('X-Request-ID', uniqid())
@@ -120,8 +126,8 @@ class EdamamRecipeController extends Controller
                 );
             }
             
-            // Extract the first recipe from hits
-            $recipe = $result['hits'][0] ?? null;
+            // Extract the first recipe from data
+            $recipe = $result['data'][0] ?? null;
             
             if (!$recipe) {
                 return response()->json(
@@ -132,7 +138,7 @@ class EdamamRecipeController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => new EdamamRecipeResource($recipe),
+                'data' => new FormattedRecipeResource($recipe),
                 'meta' => [
                     'uri' => $uri,
                     'cached' => Cache::has($cacheKey),
@@ -209,7 +215,7 @@ class EdamamRecipeController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => new EdamamRecipeCollection($result['hits'] ?? []),
+                'data' => new EdamamRecipeCollection($result['data'] ?? []),
                 'meta' => [
                     'type' => 'random_recipes',
                     'count' => $count,
@@ -285,7 +291,7 @@ class EdamamRecipeController extends Controller
             
             return response()->json([
                 'success' => true,
-                'data' => new EdamamRecipeCollection($result['hits'] ?? []),
+                'data' => new EdamamRecipeCollection($result['data'] ?? []),
                 'meta' => [
                     'type' => 'recipe_suggestions',
                     'ingredients' => $ingredients,
@@ -366,7 +372,7 @@ class EdamamRecipeController extends Controller
             }
             
             // Extract and process ingredients from recipe results
-            $extractedIngredients = $this->extractIngredientsFromRecipes($result['hits'] ?? []);
+            $extractedIngredients = $this->extractIngredientsFromRecipes($result['data'] ?? []);
             
             // Sort ingredients by frequency and importance
             $extractedIngredients = $this->sortIngredientsByImportance($extractedIngredients);
@@ -374,7 +380,7 @@ class EdamamRecipeController extends Controller
             // Limit the number of ingredients returned
             $extractedIngredients = array_slice($extractedIngredients, 0, 25);
             
-            $recipesFound = count($result['hits'] ?? []);
+            $recipesFound = count($result['data'] ?? []);
             
             Log::info('Ingredients generated successfully', [
                 'product_name' => $productName,

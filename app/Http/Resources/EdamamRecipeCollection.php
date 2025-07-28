@@ -12,7 +12,7 @@ class EdamamRecipeCollection extends ResourceCollection
      *
      * @var string
      */
-    public $collects = EdamamRecipeResource::class;
+    public $collects = FormattedRecipeResource::class;
 
     /**
      * Transform the resource collection into an array.

@@ -12,8 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->text('image_url')->nullable()->after('status');
-            $table->string('image_path')->nullable()->after('image_url');
+            $table->boolean('is_favorite')->default(false)->after('is_pinned');
         });
     }
 
@@ -23,7 +22,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('products', function (Blueprint $table) {
-            $table->dropColumn(['image_url', 'image_path']);
+            $table->dropColumn('is_favorite');
         });
     }
 };
