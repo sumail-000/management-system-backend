@@ -123,6 +123,16 @@ class NutritionDataTransformationService
                 'unit' => $totalNutrients['FOLDFE']['unit'] ?? 'µg',
                 'dailyValue' => round($totalDaily['FOLDFE']['quantity'] ?? 0, 1)
             ],
+            'folateFood' => [
+                'amount' => round($totalNutrients['FOLFD']['quantity'] ?? 0, 2),
+                'unit' => $totalNutrients['FOLFD']['unit'] ?? 'µg',
+                'dailyValue' => round($totalDaily['FOLFD']['quantity'] ?? 0, 1)
+            ],
+            'folicAcid' => [
+                'amount' => round($totalNutrients['FOLAC']['quantity'] ?? 0, 2),
+                'unit' => $totalNutrients['FOLAC']['unit'] ?? 'µg',
+                'dailyValue' => round($totalDaily['FOLAC']['quantity'] ?? 0, 1)
+            ],
             'vitaminB12' => [
                 'amount' => round($totalNutrients['VITB12']['quantity'] ?? 0, 2),
                 'unit' => $totalNutrients['VITB12']['unit'] ?? 'µg',

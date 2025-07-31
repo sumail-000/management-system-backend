@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\MembershipPlanController;
 use App\Http\Controllers\Api\UsageController;
 use App\Http\Controllers\Api\StripePaymentController;
 use App\Http\Controllers\Api\SettingsController;
+use App\Http\Controllers\Api\QrCodeController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\EdamamNutritionController;
@@ -53,6 +54,9 @@ Route::post('/password/email', [AuthController::class, 'sendPasswordResetOtp']);
 Route::get('/products/public', [ProductController::class, 'public']);
 Route::get('/products/public/{id}', [ProductController::class, 'getPublicById']);
 Route::get('/ingredients/search', [IngredientController::class, 'search']);
+
+// QR Code public routes
+Route::post('/qr-codes/{qrCodeId}/scan', [QrCodeController::class, 'trackScan'])->name('api.qr-codes.scan');
 
 // Membership Plans Routes (public access for pricing page)
 Route::get('/membership-plans', [MembershipPlanController::class, 'index']);
@@ -162,6 +166,17 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
             ->middleware('throttle:nutrition_analysis');
         Route::post('/check-data', [EdamamNutritionController::class, 'checkNutritionData']);
         Route::post('/load-data', [EdamamNutritionController::class, 'loadNutritionData']);
+    });
+    
+    // QR Code Management Routes
+    Route::prefix('qr-codes')->name('api.qr-codes.')->group(function () {
+        Route::get('/', [QrCodeController::class, 'index'])->name('index');
+        Route::post('/products/{productId}/generate', [QrCodeController::class, 'generate'])->name('generate');
+        Route::get('/products/{productId}', [QrCodeController::class, 'show'])->name('show');
+        Route::get('/{qrCodeId}/download', [QrCodeController::class, 'download'])->name('download');
+        Route::delete('/{qrCodeId}', [QrCodeController::class, 'destroy'])->name('destroy');
+        Route::get('/analytics', [QrCodeController::class, 'analytics'])->name('analytics');
+        Route::get('/{qrCodeId}/analytics', [QrCodeController::class, 'qrCodeAnalytics'])->name('qr-analytics');
     });
     
     // Other protected routes will be added here

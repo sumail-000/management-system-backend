@@ -190,13 +190,34 @@ class EdamamNutritionService
         $retryConfig = $this->configService->getRetryConfig();
         $timeout = $this->configService->getRequestTimeout();
 
+        $fullUrl = $this->config['api_url'] . '?' . http_build_query($queryParams);
+        
+        Log::info('Making Edamam API request', [
+            'url' => $fullUrl,
+            'headers' => $headers,
+            'request_data' => $requestData,
+            'timeout' => $timeout,
+            'retry_config' => $retryConfig
+        ]);
+        
         $response = Http::withHeaders($headers)
             ->timeout($timeout)
             ->retry($retryConfig['max_retries'], $retryConfig['retry_delay'])
-            ->post($this->config['api_url'] . '?' . http_build_query($queryParams), $requestData);
+            ->post($fullUrl, $requestData);
+
+        Log::info('Edamam API response received', [
+            'status' => $response->status(),
+            'successful' => $response->successful(),
+            'body' => $response->body()
+        ]);
 
         if (!$response->successful()) {
             $errorMessage = $this->parseErrorResponse($response);
+            Log::error('Edamam API request failed', [
+                'status' => $response->status(),
+                'error_message' => $errorMessage,
+                'response_body' => $response->body()
+            ]);
             throw new Exception("Edamam API Error: {$errorMessage}");
         }
 
@@ -321,7 +342,13 @@ class EdamamNutritionService
      */
     public function analyzeNutrition(array $data, array $options = []): array
     {
+        Log::info('EdamamNutritionService::analyzeNutrition called', [
+            'data' => $data,
+            'options' => $options
+        ]);
+        
         if (isset($data['ingr'])) {
+            Log::info('Processing ingredients analysis', ['ingredients' => $data['ingr']]);
             return $this->analyzeIngredients($data['ingr'], $options);
         }
         
@@ -331,9 +358,16 @@ class EdamamNutritionService
             $ingredients = $recipe['ingr'] ?? [];
             $yield = $recipe['yield'] ?? null;
             
+            Log::info('Processing recipe analysis', [
+                'title' => $title,
+                'ingredients' => $ingredients,
+                'yield' => $yield
+            ]);
+            
             return $this->analyzeRecipe($title, $ingredients, $yield, $options);
         }
         
+        Log::error('Invalid data format for nutrition analysis', ['data' => $data]);
         throw new Exception('Invalid data format. Expected "ingr" array or "recipe" object.');
     }
 
@@ -409,6 +443,8 @@ class EdamamNutritionService
             'NIA' => 'Niacin (B3)',
             'VITB6A' => 'Vitamin B6',
             'FOLDFE' => 'Folate equivalent',
+            'FOLFD' => 'Folate (food)',
+            'FOLAC' => 'Folic acid',
             'VITB12' => 'Vitamin B12',
             'VITD' => 'Vitamin D',
             'TOCPHA' => 'Vitamin E',

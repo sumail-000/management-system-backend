@@ -12,6 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use App\Models\Product;
+use App\Models\Usage;
 
 class User extends Authenticatable
 {
@@ -159,6 +160,14 @@ class User extends Authenticatable
     public function membershipPlan(): BelongsTo
     {
         return $this->belongsTo(MembershipPlan::class);
+    }
+
+    /**
+     * Get the user's usage records.
+     */
+    public function usages(): HasMany
+    {
+        return $this->hasMany(Usage::class);
     }
 
     /**
@@ -447,5 +456,36 @@ class User extends Authenticatable
         }
 
         return false;
+    }
+
+    /**
+     * Check if user can generate QR codes (Premium feature).
+     */
+    public function canGenerateQrCodes(): bool
+    {
+        // QR code generation is a premium feature
+        // Users need an active subscription (trial or paid)
+        return $this->canAccessDashboard() && $this->membershipPlan && $this->membershipPlan->name !== 'Free';
+    }
+
+    /**
+     * Increment usage for a specific feature.
+     */
+    public function incrementUsage(string $feature): void
+    {
+        // Get or create usage record for current month
+        $usage = $this->usages()->firstOrCreate([
+            'month' => now()->format('Y-m'),
+        ], [
+            'products' => 0,
+            'nutrition_analyses' => 0,
+            'qr_codes' => 0,
+            'labels' => 0,
+        ]);
+
+        // Increment the specific feature usage
+        if (in_array($feature, ['products', 'nutrition_analyses', 'qr_codes', 'labels'])) {
+            $usage->increment($feature);
+        }
     }
 }

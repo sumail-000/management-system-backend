@@ -45,6 +45,12 @@ class EdamamNutritionController extends Controller
             $data = $request->validated();
             $productId = $data['product_id'] ?? null;
             
+            // Log the incoming request data for debugging
+            Log::info('Nutrition analysis request received', [
+                'validated_data' => $data,
+                'raw_request' => $request->all()
+            ]);
+            
             // Map 'ingredients' to 'ingr' for service compatibility
             if (isset($data['ingredients'])) {
                 $data['ingr'] = $data['ingredients'];
@@ -54,11 +60,16 @@ class EdamamNutritionController extends Controller
             // Create cache data excluding product_id
             $cacheData = array_diff_key($data, ['product_id' => '']);
             
+            Log::info('Cache data prepared for nutrition analysis', [
+                'cache_data' => $cacheData
+            ]);
+            
             // Generate cache key for nutrition analysis
             $cacheKey = 'nutrition_analysis_' . md5(json_encode($cacheData));
             
             // Check cache first (cache for 1 hour)
             $result = Cache::remember($cacheKey, 3600, function () use ($cacheData) {
+                Log::info('Calling nutrition service with data', ['data' => $cacheData]);
                 return $this->nutritionService->analyzeNutrition($cacheData);
             });
             
@@ -83,11 +94,24 @@ class EdamamNutritionController extends Controller
                 ]
             ]);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Nutrition analysis validation failed', [
+                'errors' => $e->errors(),
+                'request_data' => $request->all()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             Log::error('Nutrition analysis failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
-                'request_data' => $request->validated()
+                'request_data' => $request->all(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ]);
             
             return response()->json(
@@ -288,7 +312,7 @@ class EdamamNutritionController extends Controller
             ]);
 
             $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
-                ->where('user_id', auth()->id())
+                ->where('user_id', Auth::id())
                 ->first();
 
             return response()->json([
@@ -329,7 +353,7 @@ class EdamamNutritionController extends Controller
             ]);
 
             $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
-                ->where('user_id', auth()->id())
+                ->where('user_id', Auth::id())
                 ->first();
 
             if (!$nutritionData) {

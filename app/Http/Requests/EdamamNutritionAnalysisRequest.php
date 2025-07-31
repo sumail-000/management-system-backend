@@ -20,7 +20,7 @@ class EdamamNutritionAnalysisRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'ingredients' => 'required|array|min:1|max:20',
+            'ingredients' => 'required|array|min:1',
             'ingredients.*' => 'required|string|max:500',
             'product_id' => 'sometimes|integer|exists:products,id',
             'nutrition_type' => 'sometimes|string|in:cooking,logging',
@@ -51,7 +51,7 @@ class EdamamNutritionAnalysisRequest extends FormRequest
             'ingredients.required' => 'At least one ingredient is required.',
             'ingredients.array' => 'Ingredients must be provided as an array.',
             'ingredients.min' => 'At least one ingredient is required.',
-            'ingredients.max' => 'Maximum 20 ingredients are allowed.',
+
             'ingredients.*.required' => 'Each ingredient cannot be empty.',
             'ingredients.*.string' => 'Each ingredient must be a string.',
             'ingredients.*.max' => 'Each ingredient cannot exceed 500 characters.',

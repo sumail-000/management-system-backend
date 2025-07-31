@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Ingredient;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -145,9 +146,14 @@ class ProductController extends Controller
                 'category_id' => 'required|exists:categories,id',
                 'tags' => 'nullable|array',
                 'tags.*' => 'string|max:50',
-                'serving_size' => 'required|numeric|min:0',
-                'serving_unit' => 'required|string|max:50',
-                'servings_per_container' => 'required|integer|min:1',
+                // Accept both old and new field names for serving information
+                'serving_size' => 'nullable|numeric|min:0',
+                'serving_unit' => 'nullable|string|max:50',
+                'servings_per_container' => 'nullable|integer|min:1',
+                'calories_per_serving' => 'nullable|numeric|min:0',
+                'portion_size' => 'nullable|string|in:small,medium,large',
+                'serving_type' => 'nullable|string|in:main,side',
+                'total_servings' => 'nullable|integer|min:1',
                 'is_public' => 'boolean',
                 'is_pinned' => 'boolean',
                 'status' => 'in:draft,published',
@@ -160,6 +166,43 @@ class ProductController extends Controller
                 'ingredients.*.quantity' => 'nullable|numeric|min:0',
                 'ingredients.*.unit' => 'nullable|string|max:50',
                 'ingredient_notes' => 'nullable|string|max:2000',
+                
+                // Recipe details
+                'recipe_uri' => 'nullable|string|max:500',
+                'recipe_source' => 'nullable|string|max:255',
+                'recipe_url' => 'nullable|url|max:2048',
+                'prep_time' => 'nullable|integer|min:0',
+                'cook_time' => 'nullable|integer|min:0',
+                'total_time' => 'nullable|integer|min:0',
+                'skill_level' => 'nullable|string|in:beginner,intermediate,advanced',
+                'time_category' => 'nullable|string|in:quick,medium,long',
+                'cuisine_type' => 'nullable|string|max:100',
+                'difficulty' => 'nullable|string|in:easy,medium,hard',
+                'total_co2_emissions' => 'nullable|numeric|min:0',
+                'co2_emissions_class' => 'nullable|string|max:50',
+                'recipe_yield' => 'nullable|integer|min:1',
+                'total_weight' => 'nullable|numeric|min:0',
+                'weight_per_serving' => 'nullable|numeric|min:0',
+                
+                // Rich ingredients data
+                'rich_ingredients' => 'nullable|string', // JSON string
+                
+                // Nutrition data
+                'nutrition_data' => 'nullable|string', // JSON string
+                
+                // Labels and tags
+                'diet_labels' => 'nullable|array',
+                'diet_labels.*' => 'string|max:100',
+                'health_labels' => 'nullable|array',
+                'health_labels.*' => 'string|max:100',
+                'caution_labels' => 'nullable|array',
+                'caution_labels.*' => 'string|max:100',
+                'meal_types' => 'nullable|array',
+                'meal_types.*' => 'string|max:100',
+                'dish_types' => 'nullable|array',
+                'dish_types.*' => 'string|max:100',
+                'recipe_tags' => 'nullable|array',
+                'recipe_tags.*' => 'string|max:100',
             ]);
         } catch (ValidationException $e) {
             Log::error('Product validation failed', [
@@ -175,6 +218,21 @@ class ProductController extends Controller
         $validated['is_pinned'] = $validated['is_pinned'] ?? false;
         $validated['status'] = $validated['status'] ?? 'draft';
         $validated['ingredient_notes'] = $validated['ingredient_notes'] ?? null;
+        
+        // Handle backward compatibility for old field names
+        // Only map if new fields are not provided
+        if (isset($validated['calories_per_serving']) && !isset($validated['serving_size'])) {
+            $validated['serving_size'] = $validated['calories_per_serving'];
+        }
+        if (isset($validated['portion_size']) && !isset($validated['serving_unit'])) {
+            $validated['serving_unit'] = $validated['portion_size'];
+        }
+        if (isset($validated['total_servings']) && !isset($validated['servings_per_container'])) {
+            $validated['servings_per_container'] = $validated['total_servings'];
+        }
+        
+        // Remove old field names and non-database fields
+        unset($validated['calories_per_serving'], $validated['portion_size'], $validated['total_servings'], $validated['serving_type']);
 
         // Handle image upload
         if ($request->hasFile('image_file')) {
@@ -192,18 +250,40 @@ class ProductController extends Controller
         // Remove image_file from validated data as it's not a database field
         unset($validated['image_file']);
         
-        // Extract ingredients data before creating product
+        // Extract rich data before creating product
         $ingredientsData = $validated['ingredients'] ?? [];
-        unset($validated['ingredients']);
+        $richIngredientsData = $validated['rich_ingredients'] ?? null;
+        $nutritionData = $validated['nutrition_data'] ?? null;
+        $dietLabels = $validated['diet_labels'] ?? [];
+        $healthLabels = $validated['health_labels'] ?? [];
+        $cautionLabels = $validated['caution_labels'] ?? [];
+        $mealTypes = $validated['meal_types'] ?? [];
+        $dishTypes = $validated['dish_types'] ?? [];
+        $recipeTags = $validated['recipe_tags'] ?? [];
+        
+        // Remove non-product table fields from validated data
+        unset($validated['ingredients'], $validated['rich_ingredients'], $validated['nutrition_data']);
+        unset($validated['diet_labels'], $validated['health_labels'], $validated['caution_labels']);
+        unset($validated['meal_types'], $validated['dish_types'], $validated['recipe_tags']);
 
         $product = Product::create($validated);
         
         // Handle ingredients
         if (!empty($ingredientsData)) {
-            $this->syncProductIngredients($product, $ingredientsData);
+            $this->syncProductIngredients($product, $ingredientsData, $richIngredientsData);
         }
         
-        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData']);
+        // Handle nutrition data
+        if ($nutritionData) {
+            $this->saveNutritionData($product, $nutritionData);
+        }
+        
+        // Handle labels and tags
+        $this->saveProductLabels($product, $dietLabels, $healthLabels, $cautionLabels);
+        $this->saveProductMealTypes($product, $mealTypes, $dishTypes);
+        $this->saveProductRecipeTags($product, $recipeTags);
+        
+        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData', 'productLabels', 'mealTypes', 'recipeTags']);
 
         return response()->json($product, 201);
     }
@@ -237,9 +317,14 @@ class ProductController extends Controller
             'category_id' => 'sometimes|required|exists:categories,id',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:50',
-            'serving_size' => 'sometimes|required|numeric|min:0',
-            'serving_unit' => 'sometimes|required|string|max:50',
-            'servings_per_container' => 'sometimes|required|integer|min:1',
+            // Accept both old and new field names for serving information
+            'serving_size' => 'nullable|numeric|min:0',
+            'serving_unit' => 'nullable|string|max:50',
+            'servings_per_container' => 'nullable|integer|min:1',
+            'calories_per_serving' => 'nullable|numeric|min:0',
+            'portion_size' => 'nullable|string|in:small,medium,large',
+            'serving_type' => 'nullable|string|in:main,side',
+            'total_servings' => 'nullable|integer|min:1',
             'is_public' => 'boolean',
             'is_pinned' => 'boolean',
             'status' => 'in:draft,published',
@@ -252,7 +337,58 @@ class ProductController extends Controller
             'ingredients.*.quantity' => 'nullable|numeric|min:0',
             'ingredients.*.unit' => 'nullable|string|max:50',
             'ingredient_notes' => 'nullable|string|max:2000',
+            // Recipe-related fields
+            'recipe_uri' => 'nullable|string|max:500',
+            'recipe_source' => 'nullable|string|max:255',
+            'recipe_url' => 'nullable|url|max:2048',
+            // Time fields (in minutes)
+            'prep_time' => 'nullable|integer|min:0',
+            'cook_time' => 'nullable|integer|min:0',
+            'total_time' => 'nullable|integer|min:0',
+            // Classification fields
+            'skill_level' => 'nullable|string|in:beginner,intermediate,advanced',
+            'time_category' => 'nullable|string|in:quick,medium,long',
+            'cuisine_type' => 'nullable|string|max:100',
+            'difficulty' => 'nullable|string|in:easy,medium,hard',
+            // Environmental data
+            'total_co2_emissions' => 'nullable|numeric|min:0',
+            'co2_emissions_class' => 'nullable|string|max:50',
+            // Recipe yield and serving info
+            'recipe_yield' => 'nullable|integer|min:1',
+            'total_weight' => 'nullable|numeric|min:0',
+            'weight_per_serving' => 'nullable|numeric|min:0',
+            // Rich data fields
+            'rich_ingredients' => 'nullable|string', // JSON string
+            'nutrition_data' => 'nullable|string', // JSON string
+            // Labels and tags
+            'diet_labels' => 'nullable|array',
+            'diet_labels.*' => 'string|max:100',
+            'health_labels' => 'nullable|array',
+            'health_labels.*' => 'string|max:100',
+            'caution_labels' => 'nullable|array',
+            'caution_labels.*' => 'string|max:100',
+            'meal_types' => 'nullable|array',
+            'meal_types.*' => 'string|max:100',
+            'dish_types' => 'nullable|array',
+            'dish_types.*' => 'string|max:100',
+            'recipe_tags' => 'nullable|array',
+            'recipe_tags.*' => 'string|max:100',
         ]);
+
+        // Handle backward compatibility for old field names
+        // Only map if new fields are not provided
+        if (isset($validated['calories_per_serving']) && !isset($validated['serving_size'])) {
+            $validated['serving_size'] = $validated['calories_per_serving'];
+        }
+        if (isset($validated['portion_size']) && !isset($validated['serving_unit'])) {
+            $validated['serving_unit'] = $validated['portion_size'];
+        }
+        if (isset($validated['total_servings']) && !isset($validated['servings_per_container'])) {
+            $validated['servings_per_container'] = $validated['total_servings'];
+        }
+        
+        // Remove old field names and non-database fields
+        unset($validated['calories_per_serving'], $validated['portion_size'], $validated['total_servings'], $validated['serving_type']);
 
         // Handle image upload for updates
         if ($request->hasFile('image_file')) {
@@ -297,18 +433,48 @@ class ProductController extends Controller
         // Remove image_file from validated data
         unset($validated['image_file']);
         
-        // Extract ingredients data before updating product
+        // Extract rich data before updating product
         $ingredientsData = $validated['ingredients'] ?? null;
-        unset($validated['ingredients']);
+        $richIngredientsData = $validated['rich_ingredients'] ?? null;
+        $nutritionData = $validated['nutrition_data'] ?? null;
+        $dietLabels = $validated['diet_labels'] ?? [];
+        $healthLabels = $validated['health_labels'] ?? [];
+        $cautionLabels = $validated['caution_labels'] ?? [];
+        $mealTypes = $validated['meal_types'] ?? [];
+        $dishTypes = $validated['dish_types'] ?? [];
+        $recipeTags = $validated['recipe_tags'] ?? [];
+        
+        // Remove non-product table fields from validated data
+        unset($validated['ingredients'], $validated['rich_ingredients'], $validated['nutrition_data']);
+        unset($validated['diet_labels'], $validated['health_labels'], $validated['caution_labels']);
+        unset($validated['meal_types'], $validated['dish_types'], $validated['recipe_tags']);
 
         $product->update($validated);
         
         // Handle ingredients if provided
         if ($ingredientsData !== null) {
-            $this->syncProductIngredients($product, $ingredientsData);
+            $this->syncProductIngredients($product, $ingredientsData, $richIngredientsData);
         }
         
-        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData']);
+        // Handle nutrition data if provided
+        if ($nutritionData) {
+            $this->saveNutritionData($product, $nutritionData);
+        }
+        
+        // Handle labels and tags if provided
+        if (!empty($dietLabels) || !empty($healthLabels) || !empty($cautionLabels)) {
+            $this->saveProductLabels($product, $dietLabels, $healthLabels, $cautionLabels);
+        }
+        
+        if (!empty($mealTypes) || !empty($dishTypes)) {
+            $this->saveProductMealTypes($product, $mealTypes, $dishTypes);
+        }
+        
+        if (!empty($recipeTags)) {
+            $this->saveProductRecipeTags($product, $recipeTags);
+        }
+        
+        $product->load(['ingredients', 'nutritionAutoTags', 'category', 'nutritionalData', 'productLabels', 'mealTypes', 'recipeTags']);
 
         return response()->json($product);
     }
@@ -345,9 +511,19 @@ class ProductController extends Controller
     /**
      * Sync ingredients with the product
      */
-    private function syncProductIngredients(Product $product, array $ingredientsData): void
+    private function syncProductIngredients(Product $product, array $ingredientsData, ?string $richIngredientsData = null): void
     {
         $syncData = [];
+        $richIngredients = [];
+        
+        // Parse rich ingredients data if provided
+        if ($richIngredientsData) {
+            try {
+                $richIngredients = json_decode($richIngredientsData, true) ?? [];
+            } catch (Exception $e) {
+                Log::warning('Failed to parse rich ingredients data', ['error' => $e->getMessage()]);
+            }
+        }
         
         foreach ($ingredientsData as $index => $ingredientData) {
             // Handle both old structured format and new free text format
@@ -365,11 +541,24 @@ class ProductController extends Controller
                     ['description' => null]
                 );
                 
-                // Add to sync data with order (no amount/unit for free text)
+                // Get rich data for this ingredient if available
+                $richData = $richIngredients[$index] ?? [];
+                
+                // Add to sync data with order and rich data
                 $syncData[$ingredient->id] = [
                     'order' => $index + 1,
                     'amount' => null,
-                    'unit' => null
+                    'unit' => null,
+                    'text' => $ingredientText,
+                    'quantity' => $richData['quantity'] ?? null,
+                    'measure' => $richData['measure'] ?? null,
+                    'weight' => $richData['weight'] ?? null,
+                    'food_category' => $richData['foodCategory'] ?? null,
+                    'food_id' => $richData['foodId'] ?? null,
+                    'image_url' => $richData['image'] ?? null,
+                    'is_main_ingredient' => $richData['isMainIngredient'] ?? false,
+                    'nutrition_data' => isset($richData['nutritionData']) ? json_encode($richData['nutritionData']) : null,
+                    'allergens' => isset($richData['allergens']) ? json_encode($richData['allergens']) : null,
                 ];
             } else {
                 // Legacy structured format (for backward compatibility)
@@ -385,17 +574,181 @@ class ProductController extends Controller
                     ['description' => null]
                 );
                 
-                // Add to sync data with order, amount (quantity), and unit
+                // Get rich data for this ingredient if available
+                $richData = $richIngredients[$index] ?? [];
+                
+                // Add to sync data with order, amount (quantity), unit, and rich data
                 $syncData[$ingredient->id] = [
                     'order' => $index + 1,
                     'amount' => isset($ingredientData['quantity']) ? (float)$ingredientData['quantity'] : null,
-                    'unit' => $ingredientData['unit'] ?? null
+                    'unit' => $ingredientData['unit'] ?? null,
+                    'text' => $ingredientName,
+                    'quantity' => $richData['quantity'] ?? ($ingredientData['quantity'] ?? null),
+                    'measure' => $richData['measure'] ?? ($ingredientData['unit'] ?? null),
+                    'weight' => $richData['weight'] ?? null,
+                    'food_category' => $richData['foodCategory'] ?? null,
+                    'food_id' => $richData['foodId'] ?? null,
+                    'image_url' => $richData['image'] ?? null,
+                    'is_main_ingredient' => $richData['isMainIngredient'] ?? false,
+                    'nutrition_data' => isset($richData['nutritionData']) ? json_encode($richData['nutritionData']) : null,
+                    'allergens' => isset($richData['allergens']) ? json_encode($richData['allergens']) : null,
                 ];
             }
         }
         
         // Sync ingredients with the product
         $product->ingredients()->sync($syncData);
+    }
+
+    /**
+     * Save nutrition data for the product
+     */
+    private function saveNutritionData(Product $product, string $nutritionDataJson): void
+    {
+        try {
+            $nutritionData = json_decode($nutritionDataJson, true);
+            if (!$nutritionData) {
+                return;
+            }
+
+            // Create or update nutritional data record
+            $product->nutritionalData()->updateOrCreate(
+                ['product_id' => $product->id],
+                [
+                    'calories' => $nutritionData['calories'] ?? null,
+                    'total_weight' => $nutritionData['totalWeight'] ?? null,
+                    'servings' => $nutritionData['servings'] ?? null,
+                    'diet_labels' => isset($nutritionData['dietLabels']) ? json_encode($nutritionData['dietLabels']) : null,
+                    'health_labels' => isset($nutritionData['healthLabels']) ? json_encode($nutritionData['healthLabels']) : null,
+                    'cautions' => isset($nutritionData['cautions']) ? json_encode($nutritionData['cautions']) : null,
+                    'total_nutrients' => isset($nutritionData['totalNutrients']) ? json_encode($nutritionData['totalNutrients']) : null,
+                    'total_daily' => isset($nutritionData['totalDaily']) ? json_encode($nutritionData['totalDaily']) : null,
+                    'total_nutrients_kcal' => isset($nutritionData['totalNutrientsKCal']) ? json_encode($nutritionData['totalNutrientsKCal']) : null,
+                    'total_co2_emissions' => $nutritionData['totalCO2Emissions'] ?? null,
+                    'co2_emissions_class' => $nutritionData['co2EmissionsClass'] ?? null,
+                    'analysis_source' => 'edamam',
+                    'analysis_version' => $nutritionData['analysisVersion'] ?? null,
+                    'request_id' => $nutritionData['requestId'] ?? null,
+                    'is_cached' => $nutritionData['isCached'] ?? false,
+                ]
+            );
+        } catch (Exception $e) {
+            Log::error('Failed to save nutrition data', [
+                'product_id' => $product->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Save product labels (diet, health, caution)
+     */
+    private function saveProductLabels(Product $product, array $dietLabels, array $healthLabels, array $cautionLabels): void
+    {
+        // Clear existing labels
+        $product->productLabels()->delete();
+
+        $labelsToInsert = [];
+
+        // Add diet labels
+        foreach ($dietLabels as $label) {
+            $labelsToInsert[] = [
+                'product_id' => $product->id,
+                'label_type' => 'diet',
+                'label_value' => $label,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        // Add health labels
+        foreach ($healthLabels as $label) {
+            $labelsToInsert[] = [
+                'product_id' => $product->id,
+                'label_type' => 'health',
+                'label_value' => $label,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        // Add caution labels
+        foreach ($cautionLabels as $label) {
+            $labelsToInsert[] = [
+                'product_id' => $product->id,
+                'label_type' => 'caution',
+                'label_value' => $label,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (!empty($labelsToInsert)) {
+            $product->productLabels()->insert($labelsToInsert);
+        }
+    }
+
+    /**
+     * Save product meal types (meal and dish types)
+     */
+    private function saveProductMealTypes(Product $product, array $mealTypes, array $dishTypes): void
+    {
+        // Clear existing meal types
+        $product->mealTypes()->delete();
+
+        $mealTypesToInsert = [];
+
+        // Add meal types
+        foreach ($mealTypes as $type) {
+            $mealTypesToInsert[] = [
+                'product_id' => $product->id,
+                'type_category' => 'meal',
+                'type_value' => $type,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        // Add dish types
+        foreach ($dishTypes as $type) {
+            $mealTypesToInsert[] = [
+                'product_id' => $product->id,
+                'type_category' => 'dish',
+                'type_value' => $type,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (!empty($mealTypesToInsert)) {
+            $product->mealTypes()->insert($mealTypesToInsert);
+        }
+    }
+
+    /**
+     * Save product recipe tags
+     */
+    private function saveProductRecipeTags(Product $product, array $recipeTags): void
+    {
+        // Clear existing recipe tags
+        $product->recipeTags()->delete();
+
+        $tagsToInsert = [];
+
+        // Add recipe tags
+        foreach ($recipeTags as $tag) {
+            $tagsToInsert[] = [
+                'product_id' => $product->id,
+                'tag_value' => $tag,
+                'tag_source' => 'recipe',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+
+        if (!empty($tagsToInsert)) {
+            $product->recipeTags()->insert($tagsToInsert);
+        }
     }
 
     /**
@@ -432,7 +785,7 @@ class ProductController extends Controller
      */
     public function getPublicById(string $id): JsonResponse
     {
-        $product = Product::with(['ingredients', 'nutritionAutoTags', 'user:id,name,company', 'category'])
+        $product = Product::with(['ingredients', 'nutritionAutoTags', 'user:id,name,company', 'category', 'qrCodes', 'labels'])
             ->where('is_public', true)
             ->findOrFail($id);
 

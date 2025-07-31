@@ -13,7 +13,7 @@ class Ingredient extends Model
     protected $fillable = [
         'name',
         'description',
-        'edamam_id',
+        'edamam_food_id',
         'allergens',
         'tags',
         'notes',
