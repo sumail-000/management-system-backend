@@ -11,8 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('membership_plans', function (Blueprint $table) {
-            $table->string('stripe_price_id')->nullable()->after('price');
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreign('membership_plan_id')->references('id')->on('membership_plans')->nullOnDelete();
         });
     }
 
@@ -21,8 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('membership_plans', function (Blueprint $table) {
-            $table->dropColumn('stripe_price_id');
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['membership_plan_id']);
         });
     }
 };
