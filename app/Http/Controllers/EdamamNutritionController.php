@@ -8,8 +8,8 @@ use App\Http\Resources\EdamamNutritionCollection;
 use App\Http\Resources\EdamamErrorResource;
 use App\Services\EdamamNutritionService;
 use App\Services\NutritionDataTransformationService;
-use App\Models\NutritionalData;
 use App\Models\Product;
+// Removed Ingredient model - now using JSON storage
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -311,14 +311,13 @@ class EdamamNutritionController extends Controller
                 'product_id' => 'required|exists:products,id'
             ]);
 
-            $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
-                ->where('user_id', Auth::id())
-                ->first();
+            $product = Product::find($validated['product_id']);
+            $nutritionData = $product ? $product->nutritional_data : null;
 
             return response()->json([
                 'success' => true,
                 'exists' => $nutritionData !== null,
-                'data' => $nutritionData ? $nutritionData->toFrontendStructure() : null
+                'data' => $nutritionData
             ]);
 
         } catch (ValidationException $e) {
@@ -352,9 +351,8 @@ class EdamamNutritionController extends Controller
                 'product_id' => 'required|exists:products,id'
             ]);
 
-            $nutritionData = NutritionalData::where('product_id', $validated['product_id'])
-                ->where('user_id', Auth::id())
-                ->first();
+            $product = Product::find($validated['product_id']);
+            $nutritionData = $product ? $product->nutritional_data : null;
 
             if (!$nutritionData) {
                 return response()->json([
@@ -366,7 +364,7 @@ class EdamamNutritionController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Nutrition data loaded successfully',
-                'data' => $nutritionData->toFrontendStructure()
+                'data' => $nutritionData
             ]);
 
         } catch (ValidationException $e) {
@@ -422,13 +420,55 @@ class EdamamNutritionController extends Controller
                 'analysis_metadata.product_name' => 'nullable|string',
             ]);
 
-            // Create nutrition data using the new model method
-            $savedData = NutritionalData::createFromFrontendData($validated);
+            // Get the product and save nutrition data to ingredients_data JSON column
+            $product = Product::find($validated['product_id']);
+            
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found'
+                ], 404);
+            }
+            
+            // Prepare nutrition data for storage
+            $nutritionDataToSave = [
+                'basic_nutrition' => $validated['basic_nutrition'],
+                'macronutrients' => $validated['macronutrients'],
+                'micronutrients' => $validated['micronutrients'],
+                'daily_values' => $validated['daily_values'],
+                'health_labels' => $validated['health_labels'] ?? [],
+                'diet_labels' => $validated['diet_labels'] ?? [],
+                'allergens' => $validated['allergens'] ?? [],
+                'warnings' => $validated['warnings'] ?? [],
+                'high_nutrients' => $validated['high_nutrients'] ?? [],
+                'nutrition_summary' => $validated['nutrition_summary'] ?? [],
+                'analysis_metadata' => $validated['analysis_metadata']
+            ];
+            
+            // Get current ingredients data or initialize empty array
+            $ingredientsData = $product->ingredients_data ?? [];
+            
+            // Add or update nutrition data in the first ingredient, or create a general one
+            if (empty($ingredientsData)) {
+                $ingredientsData = [[
+                    'name' => 'General Nutrition Data',
+                    'description' => 'General nutrition data for product',
+                    'order' => 0,
+                    'nutrition_data' => $nutritionDataToSave
+                ]];
+            } else {
+                // Update the first ingredient with nutrition data
+                $ingredientsData[0]['nutrition_data'] = $nutritionDataToSave;
+            }
+            
+            // Save the updated ingredients data
+            $product->ingredients_data = $ingredientsData;
+            $product->save();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Nutrition data saved successfully',
-                'data' => $savedData->toFrontendStructure()
+                'data' => $nutritionDataToSave
             ]);
 
         } catch (ValidationException $e) {

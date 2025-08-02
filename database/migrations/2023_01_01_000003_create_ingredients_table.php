@@ -27,8 +27,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->foreignId('ingredient_id')->constrained()->cascadeOnDelete();
-            $table->decimal('amount', 10, 2)->nullable();
-            $table->string('unit')->nullable();
             $table->integer('order')->default(0); // For sorting/reordering
             $table->timestamps();
 

@@ -176,7 +176,7 @@ class CollectionController extends Controller
         $sortOrder = $request->get('sort_order', 'desc');
 
         $query = $collection->products()
-            ->with(['category', 'ingredients']);
+            ->with(['category']);
 
         if ($search) {
             $query->where('name', 'like', '%' . $search . '%');

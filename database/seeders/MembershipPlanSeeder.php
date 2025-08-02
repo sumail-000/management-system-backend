@@ -32,6 +32,7 @@ class MembershipPlanSeeder extends Seeder
                 ],
                 'product_limit' => 3,
                 'label_limit' => 10,
+                'qr_code_limit' => 0, // No QR codes for Basic plan
             ],
             [
                 'name' => 'Pro',
@@ -52,6 +53,7 @@ class MembershipPlanSeeder extends Seeder
                 ],
                 'product_limit' => 20,
                 'label_limit' => 100,
+                'qr_code_limit' => 50, // 50 QR codes for Pro plan
             ],
             [
                 'name' => 'Enterprise',
@@ -74,6 +76,7 @@ class MembershipPlanSeeder extends Seeder
                 ],
                 'product_limit' => 0, // 0 means unlimited
                 'label_limit' => 0, // 0 means unlimited
+                'qr_code_limit' => 0, // 0 means unlimited QR codes
             ]
         ];
 
@@ -88,7 +91,8 @@ class MembershipPlanSeeder extends Seeder
                 'plan_name' => $plan->name,
                 'price' => $plan->price,
                 'product_limit' => $plan->product_limit,
-                'label_limit' => $plan->label_limit
+                'label_limit' => $plan->label_limit,
+                'qr_code_limit' => $plan->qr_code_limit
             ]);
         }
         

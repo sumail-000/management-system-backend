@@ -47,6 +47,8 @@ Route::prefix('password')->group(function () {
     Route::post('/reset', [AuthController::class, 'resetPassword']);
 });
 
+
+
 // Legacy route for backward compatibility
 Route::post('/password/email', [AuthController::class, 'sendPasswordResetOtp']);
 
@@ -107,6 +109,7 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
     Route::get('/products/favorites/list', [ProductController::class, 'getFavorites']);
     Route::get('/products/categories/list', [ProductController::class, 'getCategories']);
     Route::get('/products/tags/list', [ProductController::class, 'getTags']);
+    Route::get('/products/{id}/tags', [ProductController::class, 'getProductTags']);
     Route::get('/products/trashed/list', [ProductController::class, 'trashed']);
     Route::patch('/products/{id}/restore', [ProductController::class, 'restore']);
     Route::delete('/products/{id}/force-delete', [ProductController::class, 'forceDelete']);
@@ -172,10 +175,12 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
     Route::prefix('qr-codes')->name('api.qr-codes.')->group(function () {
         Route::get('/', [QrCodeController::class, 'index'])->name('index');
         Route::post('/products/{productId}/generate', [QrCodeController::class, 'generate'])->name('generate');
+        Route::post('/generate-from-url', [QrCodeController::class, 'generateFromUrl'])->name('generate-from-url');
         Route::get('/products/{productId}', [QrCodeController::class, 'show'])->name('show');
         Route::get('/{qrCodeId}/download', [QrCodeController::class, 'download'])->name('download');
         Route::delete('/{qrCodeId}', [QrCodeController::class, 'destroy'])->name('destroy');
         Route::get('/analytics', [QrCodeController::class, 'analytics'])->name('analytics');
+        Route::get('/creation-deletion-analytics', [QrCodeController::class, 'getAnalytics'])->name('creation-deletion-analytics');
         Route::get('/{qrCodeId}/analytics', [QrCodeController::class, 'qrCodeAnalytics'])->name('qr-analytics');
     });
     

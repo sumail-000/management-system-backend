@@ -18,7 +18,6 @@ class Product extends Model
         'name',
         'description',
         'category_id',
-        'tags',
         'serving_size',
         'serving_unit',
         'servings_per_container',
@@ -29,10 +28,11 @@ class Product extends Model
         'image_url',
         'image_path',
         'ingredient_notes',
+        'ingredients_data',
         // Recipe fields
         'recipe_uri',
         'recipe_source',
-        'recipe_url',
+        'source_url',
         'prep_time',
         'cook_time',
         'total_time',
@@ -45,15 +45,38 @@ class Product extends Model
         'recipe_yield',
         'total_weight',
         'weight_per_serving',
+        'total_recipe_calories',
+        'calories_per_serving_recipe',
+        // Recipe metadata
+        'diet_labels',
+        'health_labels',
+        'caution_labels',
+        'meal_types',
+        'dish_types',
+        'recipe_tags',
+        // Recipe rating and nutrition score
+        'datametrics_rating',
+        'nutrition_score',
+        // Individual macronutrient fields per serving
+        'protein_per_serving',
+        'carbs_per_serving',
+        'fat_per_serving',
     ];
 
     protected $casts = [
-        'tags' => 'array',
         'is_public' => 'boolean',
         'is_pinned' => 'boolean',
         'is_favorite' => 'boolean',
         'serving_size' => 'decimal:2',
         'servings_per_container' => 'integer',
+        'ingredients_data' => 'array',
+        // Recipe metadata casts
+        'diet_labels' => 'array',
+        'health_labels' => 'array',
+        'caution_labels' => 'array',
+        'meal_types' => 'array',
+        'dish_types' => 'array',
+        'recipe_tags' => 'array',
     ];
 
     protected $appends = [
@@ -70,22 +93,39 @@ class Product extends Model
         return $this->belongsTo(Category::class);
     }
 
-    public function ingredients(): BelongsToMany
+    /**
+     * Get ingredients data from JSON column
+     */
+    public function getIngredientsAttribute(): array
     {
-        return $this->belongsToMany(Ingredient::class, 'product_ingredient')
-                    ->withPivot(['amount', 'unit', 'order'])
-                    ->orderBy('order');
+        return $this->ingredients_data ?? [];
     }
 
-    public function nutritionAutoTags(): HasMany
+    /**
+     * Set ingredients data to JSON column
+     */
+    public function setIngredientsAttribute(array $ingredients): void
     {
-        return $this->hasMany(NutritionAutoTag::class);
+        $this->ingredients_data = $ingredients;
     }
 
-    public function nutritionalData(): HasMany
+    /**
+     * Get nutrition data from the first ingredient that has it
+     */
+    public function getNutritionalDataAttribute(): ?array
     {
-        return $this->hasMany(NutritionalData::class);
+        $ingredients = $this->ingredients_data ?? [];
+        
+        foreach ($ingredients as $ingredient) {
+            if (isset($ingredient['nutrition_data']) && !empty($ingredient['nutrition_data'])) {
+                return $ingredient['nutrition_data'];
+            }
+        }
+        
+        return null;
     }
+
+    // Removed old relationships - ingredients now stored as JSON in ingredients_data column
 
     public function labels(): HasMany
     {
@@ -106,29 +146,7 @@ class Product extends Model
             ->withTimestamps();
     }
 
-    /**
-     * Get the product labels (diet, health, caution).
-     */
-    public function productLabels(): HasMany
-    {
-        return $this->hasMany(ProductLabel::class);
-    }
 
-    /**
-     * Get the product meal types.
-     */
-    public function mealTypes(): HasMany
-    {
-        return $this->hasMany(ProductMealType::class);
-    }
-
-    /**
-     * Get the product recipe tags.
-     */
-    public function recipeTags(): HasMany
-    {
-        return $this->hasMany(ProductRecipeTag::class);
-    }
 
     /**
      * Get the full image URL for the product

@@ -3,9 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
 use App\Models\QrCode;
+use App\Models\QrCodeAnalytics;
 use App\Models\User;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -107,7 +108,7 @@ class QrCodeController extends Controller
 
             // Set QR code options with improved defaults for better corner rendering
             $size = $request->get('size', 300);
-            $format = $request->get('format', 'svg'); // Default to SVG to avoid Imagick dependency
+            $format = $request->get('format', 'png'); // Default to PNG since GD is available
             $errorCorrection = $request->get('error_correction', 'H'); // Default to High for better corner visibility
             $margin = $request->get('margin', 1); // Reduced margin for better corner visibility
             $color = $request->get('color', '#000000');
@@ -122,14 +123,26 @@ class QrCodeController extends Controller
             ];
 
             // Check if GD extension is available for PNG/JPG format
+            // Note: Laravel's artisan serve may not load GD properly, so we'll try to use it anyway
             if (($format === 'png' || $format === 'jpg') && !extension_loaded('gd')) {
-                // Fallback to SVG if GD is not available
-                $originalFormat = $format;
-                $format = 'svg';
-                Log::warning('GD extension not available, falling back to SVG format', [
-                    'requested_format' => $originalFormat,
-                    'fallback_format' => 'svg'
-                ]);
+                // Try to check if GD functions exist as a secondary check
+                if (!function_exists('imagecreate')) {
+                    // Fallback to SVG if GD is truly not available
+                    $originalFormat = $format;
+                    $format = 'svg';
+                    Log::warning('GD extension not available, falling back to SVG format', [
+                        'requested_format' => $originalFormat,
+                        'fallback_format' => 'svg',
+                        'extension_loaded' => extension_loaded('gd'),
+                        'imagecreate_exists' => function_exists('imagecreate')
+                    ]);
+                } else {
+                    Log::info('GD extension reported as not loaded but GD functions are available, proceeding with PNG/JPG', [
+                        'requested_format' => $format,
+                        'extension_loaded' => extension_loaded('gd'),
+                        'imagecreate_exists' => function_exists('imagecreate')
+                    ]);
+                }
             }
 
             // Generate QR code using Endroid package with proper configuration
@@ -238,6 +251,7 @@ class QrCodeController extends Controller
             } else {
                 // Create new QR code record with premium features
                 $createData = [
+                    'user_id' => $user->id,
                     'product_id' => $product->id,
                     'url_slug' => $publicUrl,
                     'image_path' => $filename,
@@ -251,6 +265,19 @@ class QrCodeController extends Controller
                 }
                 
                 $qrCodeRecord = QrCode::create($createData);
+                
+                // Track QR code creation analytics
+                QrCodeAnalytics::trackCreation(
+                    $user->id,
+                    $qrCodeRecord->id,
+                    QrCodeAnalytics::TYPE_PRODUCT,
+                    [
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'format' => $format,
+                        'size' => $size
+                    ]
+                );
             }
 
             // Track usage
@@ -315,6 +342,220 @@ class QrCodeController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to generate QR code. Please try again.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate QR code from URL content directly
+     */
+    public function generateFromUrl(Request $request): JsonResponse
+    {
+        try {
+            // Validate request
+            $validator = Validator::make($request->all(), [
+                'content' => 'required|string|max:2048',
+                'type' => 'sometimes|string|in:url,custom',
+                'size' => 'sometimes|integer|min:100|max:1000',
+                'format' => 'sometimes|string|in:png,svg,jpg',
+                'error_correction' => 'sometimes|string|in:L,M,Q,H',
+                'margin' => 'sometimes|integer|min:0|max:10',
+                'color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/',
+                'background_color' => 'sometimes|string|regex:/^#[0-9A-Fa-f]{6}$/'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            /** @var User $user */
+            $user = Auth::user();
+            $user->load('membershipPlan');
+            if (!$user->canGenerateQrCodes()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'QR code generation requires a premium membership',
+                    'upgrade_required' => true
+                ], 403);
+            }
+
+            // Check if this is a premium user for advanced features
+            $isPremiumUser = $user->membershipPlan && $user->membershipPlan->name !== 'Basic';
+            $isEnterpriseUser = $user->membershipPlan && $user->membershipPlan->name === 'Enterprise';
+
+            // Get content from request
+            $content = $request->get('content');
+            $type = $request->get('type', 'url');
+
+            // Set QR code options with improved defaults
+            $size = $request->get('size', 300);
+            $format = $request->get('format', 'png');
+            $errorCorrection = $request->get('error_correction', 'H');
+            $margin = $request->get('margin', 1);
+            $color = $request->get('color', '#000000');
+            $backgroundColor = $request->get('background_color', '#FFFFFF');
+
+            // Map error correction levels
+            $errorCorrectionMap = [
+                'L' => ErrorCorrectionLevel::Low,
+                'M' => ErrorCorrectionLevel::Medium,
+                'Q' => ErrorCorrectionLevel::Quartile,
+                'H' => ErrorCorrectionLevel::High,
+            ];
+
+            // Check if GD extension is available for PNG/JPG format
+            if (($format === 'png' || $format === 'jpg') && !extension_loaded('gd')) {
+                $originalFormat = $format;
+                $format = 'svg';
+                Log::warning('GD extension not available, falling back to SVG format', [
+                    'requested_format' => $originalFormat,
+                    'fallback_format' => 'svg'
+                ]);
+            }
+
+            // Generate QR code using Endroid package
+            if ($format === 'svg') {
+                $builder = new Builder(
+                    writer: new SvgWriter(),
+                    data: $content,
+                    encoding: new Encoding('UTF-8'),
+                    errorCorrectionLevel: $errorCorrectionMap[$errorCorrection],
+                    size: $size,
+                    margin: $margin,
+                    roundBlockSizeMode: RoundBlockSizeMode::Margin
+                );
+            } else {
+                // Convert hex colors to RGB for PNG/JPG format
+                $foregroundColor = [
+                    'r' => hexdec(substr($color, 1, 2)),
+                    'g' => hexdec(substr($color, 3, 2)),
+                    'b' => hexdec(substr($color, 5, 2))
+                ];
+                $backgroundColorRgb = [
+                    'r' => hexdec(substr($backgroundColor, 1, 2)),
+                    'g' => hexdec(substr($backgroundColor, 3, 2)),
+                    'b' => hexdec(substr($backgroundColor, 5, 2))
+                ];
+
+                $builder = new Builder(
+                    writer: new PngWriter(),
+                    data: $content,
+                    encoding: new Encoding('UTF-8'),
+                    errorCorrectionLevel: $errorCorrectionMap[$errorCorrection],
+                    size: $size,
+                    margin: $margin,
+                    roundBlockSizeMode: RoundBlockSizeMode::Margin
+                );
+            }
+
+            $result = $builder->build();
+            $qrCode = $result->getString();
+
+            // Handle JPG format conversion if needed
+            if ($format === 'jpg') {
+                $image = imagecreatefromstring($qrCode);
+                $width = imagesx($image);
+                $height = imagesy($image);
+                
+                $jpgImage = imagecreatetruecolor($width, $height);
+                $bgColor = imagecolorallocate($jpgImage, $backgroundColorRgb['r'], $backgroundColorRgb['g'], $backgroundColorRgb['b']);
+                imagefill($jpgImage, 0, 0, $bgColor);
+                imagecopy($jpgImage, $image, 0, 0, 0, 0, $width, $height);
+                
+                ob_start();
+                imagejpeg($jpgImage, null, 90);
+                $qrCode = ob_get_contents();
+                ob_end_clean();
+                
+                imagedestroy($image);
+                imagedestroy($jpgImage);
+            }
+
+            // Generate unique filename
+            $filename = 'qr-codes/url_' . Str::random(15) . '.' . $format;
+            
+            // Store QR code image
+            $this->getPublicDisk()->put($filename, $qrCode);
+
+            // Create QR code record (without product association)
+            $createData = [
+                'user_id' => $user->id, // Associate with the authenticated user
+                'product_id' => null, // No product association for URL-based QR codes
+                'url_slug' => $content,
+                'image_path' => $filename,
+                'scan_count' => 0,
+                'is_premium' => $isPremiumUser,
+            ];
+            
+            // Generate unique code for premium users
+            if ($isPremiumUser) {
+                $createData['unique_code'] = 'QR-URL-' . strtoupper(uniqid()) . '-' . $user->id;
+            }
+            
+            $qrCodeRecord = QrCode::create($createData);
+            
+            // Track QR code creation analytics
+            QrCodeAnalytics::trackCreation(
+                $user->id,
+                $qrCodeRecord->id,
+                QrCodeAnalytics::TYPE_URL,
+                [
+                    'content' => $content,
+                    'type' => $type,
+                    'format' => $format,
+                    'size' => $size
+                ]
+            );
+
+            // Track usage
+            $user->incrementUsage('qr_codes');
+
+            // Prepare response data
+            $qrCodeData = [
+                'id' => $qrCodeRecord->id,
+                'product_id' => null,
+                'url_slug' => $qrCodeRecord->url_slug,
+                'scan_count' => $qrCodeRecord->scan_count,
+                'last_scanned_at' => $qrCodeRecord->last_scanned_at,
+                'is_premium' => $qrCodeRecord->is_premium,
+                'created_at' => $qrCodeRecord->created_at,
+                'updated_at' => $qrCodeRecord->updated_at,
+            ];
+            
+            // Add premium features to QR code data
+            if ($isPremiumUser && $qrCodeRecord->unique_code) {
+                $qrCodeData['unique_code'] = $qrCodeRecord->unique_code;
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'QR code generated successfully from URL',
+                'qr_code' => $qrCodeData,
+                'image_url' => Storage::url($filename),
+                'public_url' => $content, // The content itself is the public URL
+                'download_url' => route('api.qr-codes.download', $qrCodeRecord->id),
+                'user_plan' => [
+                    'is_premium' => $isPremiumUser,
+                    'is_enterprise' => $isEnterpriseUser,
+                    'plan_name' => $user->membershipPlan ? $user->membershipPlan->name : 'Basic'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('QR Code generation from URL failed', [
+                'content' => $request->get('content'),
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate QR code from URL. Please try again.'
             ], 500);
         }
     }
@@ -389,9 +630,8 @@ class QrCodeController extends Controller
     public function download($qrCodeId)
     {
         try {
-            $qrCode = QrCode::whereHas('product', function ($query) {
-                $query->where('user_id', Auth::id());
-            })->findOrFail($qrCodeId);
+            // Find QR code by user_id (handles both product-based and URL-generated QR codes)
+            $qrCode = QrCode::where('user_id', Auth::id())->findOrFail($qrCodeId);
 
             if (!$qrCode->image_path || !$this->getPublicDisk()->exists($qrCode->image_path)) {
                 return response()->json([
@@ -400,7 +640,12 @@ class QrCodeController extends Controller
                 ], 404);
             }
 
-            $filename = 'qr-code-product-' . $qrCode->product_id . '.' . pathinfo($qrCode->image_path, PATHINFO_EXTENSION);
+            // Generate appropriate filename based on QR code type
+            if ($qrCode->product_id) {
+                $filename = 'qr-code-product-' . $qrCode->product_id . '.' . pathinfo($qrCode->image_path, PATHINFO_EXTENSION);
+            } else {
+                $filename = 'qr-code-custom-' . $qrCode->id . '.' . pathinfo($qrCode->image_path, PATHINFO_EXTENSION);
+            }
             
             $filePath = Storage::disk('public')->path($qrCode->image_path);
             return response()->download($filePath, $filename);
@@ -425,9 +670,34 @@ class QrCodeController extends Controller
     public function destroy($qrCodeId): JsonResponse
     {
         try {
-            $qrCode = QrCode::whereHas('product', function ($query) {
-                $query->where('user_id', Auth::id());
-            })->findOrFail($qrCodeId);
+            // Find QR code by user_id (handles both product-based and URL-generated QR codes)
+            $qrCode = QrCode::where('user_id', Auth::id())->findOrFail($qrCodeId);
+            
+            // Determine QR code type for analytics
+            $qrCodeType = $qrCode->product_id ? QrCodeAnalytics::TYPE_PRODUCT : QrCodeAnalytics::TYPE_URL;
+            
+            // Prepare metadata for analytics
+            $metadata = [
+                'scan_count' => $qrCode->scan_count,
+                'last_scanned_at' => $qrCode->last_scanned_at,
+            ];
+            
+            if ($qrCode->product_id) {
+                $metadata['product_id'] = $qrCode->product_id;
+                if ($qrCode->product) {
+                    $metadata['product_name'] = $qrCode->product->name;
+                }
+            } else {
+                $metadata['url_content'] = $qrCode->url_slug;
+            }
+            
+            // Track QR code deletion analytics before deleting
+            QrCodeAnalytics::trackDeletion(
+                Auth::id(),
+                $qrCode->id,
+                $qrCodeType,
+                $metadata
+            );
 
             // Delete image file if it exists
             if ($qrCode->image_path && $this->getPublicDisk()->exists($qrCode->image_path)) {
@@ -456,7 +726,52 @@ class QrCodeController extends Controller
         }
     }
 
-
+    /**
+     * Get QR code creation and deletion analytics
+     */
+    public function getAnalytics(Request $request): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            $days = $request->get('days', 30);
+            
+            // Get creation and deletion analytics
+            $creationAnalytics = QrCodeAnalytics::getCreationAnalytics($user->id, $days);
+            $deletionAnalytics = QrCodeAnalytics::getDeletionAnalytics($user->id, $days);
+            $trends = QrCodeAnalytics::getTrends($user->id, $days);
+            
+            // Get totals
+            $totalCreated = QrCodeAnalytics::getTotalCreated($user->id);
+            $totalDeleted = QrCodeAnalytics::getTotalDeleted($user->id);
+            $netQrCodes = $totalCreated - $totalDeleted;
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'creation_analytics' => $creationAnalytics,
+                    'deletion_analytics' => $deletionAnalytics,
+                    'trends' => $trends,
+                    'totals' => [
+                        'created' => $totalCreated,
+                        'deleted' => $totalDeleted,
+                        'net_qr_codes' => $netQrCodes
+                    ],
+                    'period_days' => $days
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('QR Code analytics retrieval failed', [
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve QR code analytics'
+            ], 500);
+        }
+    }
 
     /**
      * Get all QR codes for the authenticated user
@@ -467,13 +782,50 @@ class QrCodeController extends Controller
             /** @var User $user */
             $user = Auth::user();
             
-            $qrCodes = QrCode::whereHas('product', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
+            Log::info('🔄 [QR_CONTROLLER] Starting QR codes index request', [
+                'user_id' => $user->id,
+                'user_email' => $user->email,
+                'timestamp' => now()->toISOString()
+            ]);
+            
+            // Get all QR codes for the user - both with and without products
+            Log::info('🔍 [QR_CONTROLLER] Building QR codes query for user', [
+                'user_id' => $user->id
+            ]);
+            
+            $qrCodes = QrCode::where(function ($query) use ($user) {
+                // QR codes with products
+                $query->whereHas('product', function ($productQuery) use ($user) {
+                    $productQuery->where('user_id', $user->id);
+                })
+                // OR QR codes without products but created by this user
+                ->orWhere(function ($urlQuery) use ($user) {
+                    $urlQuery->whereNull('product_id')
+                             ->where('user_id', $user->id);
+                });
             })
             ->with('product:id,name')
             ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($qrCode) {
+            ->get();
+            
+            Log::info('📊 [QR_CONTROLLER] Raw QR codes query result', [
+                'user_id' => $user->id,
+                'qr_codes_count' => $qrCodes->count(),
+                'qr_codes_raw' => $qrCodes->map(function ($qr) {
+                    return [
+                        'id' => $qr->id,
+                        'user_id' => $qr->user_id,
+                        'product_id' => $qr->product_id,
+                        'url_slug' => $qr->url_slug,
+                        'image_path' => $qr->image_path,
+                        'scan_count' => $qr->scan_count,
+                        'created_at' => $qr->created_at,
+                        'product_name' => $qr->product ? $qr->product->name : null
+                    ];
+                })->toArray()
+            ]);
+            
+            $mappedQrCodes = $qrCodes->map(function ($qrCode) {
                 return [
                     'id' => $qrCode->id,
                     'url_slug' => $qrCode->url_slug,
@@ -482,20 +834,37 @@ class QrCodeController extends Controller
                     'last_scanned_at' => $qrCode->last_scanned_at,
                     'created_at' => $qrCode->created_at,
                     'download_url' => route('api.qr-codes.download', $qrCode->id),
-                    'product_name' => $qrCode->product->name,
-                    'product_id' => $qrCode->product->id
+                    'product_name' => $qrCode->product ? $qrCode->product->name : 'URL QR Code',
+                    'product_id' => $qrCode->product ? $qrCode->product->id : null
                 ];
             });
-
-            return response()->json([
-                'success' => true,
-                'data' => $qrCodes
+            
+            Log::info('📋 [QR_CONTROLLER] Mapped QR codes for response', [
+                'user_id' => $user->id,
+                'mapped_count' => $mappedQrCodes->count(),
+                'mapped_qr_codes' => $mappedQrCodes->toArray()
             ]);
 
+            $response = [
+                'success' => true,
+                'data' => $mappedQrCodes
+            ];
+            
+            Log::info('✅ [QR_CONTROLLER] QR codes index request completed successfully', [
+                'user_id' => $user->id,
+                'response_data_count' => count($response['data']),
+                'response_success' => $response['success']
+            ]);
+
+            return response()->json($response);
+
         } catch (\Exception $e) {
-            Log::error('Failed to fetch user QR codes', [
+            Log::error('❌ [QR_CONTROLLER] Failed to fetch user QR codes', [
                 'user_id' => Auth::id(),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ]);
 
             return response()->json([

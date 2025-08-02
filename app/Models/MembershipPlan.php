@@ -20,6 +20,7 @@ class MembershipPlan extends Model
         'features',
         'product_limit',
         'label_limit',
+        'qr_code_limit',
     ];
 
     /**
@@ -54,5 +55,13 @@ class MembershipPlan extends Model
     public function hasUnlimitedLabels(): bool
     {
         return $this->label_limit === 0;
+    }
+
+    /**
+     * Check if this plan has unlimited QR codes.
+     */
+    public function hasUnlimitedQrCodes(): bool
+    {
+        return $this->qr_code_limit === 0;
     }
 }

@@ -25,6 +25,7 @@ class QrCode extends Model
     protected $table = 'qr_codes';
 
     protected $fillable = [
+        'user_id',
         'product_id',
         'url_slug',
         'image_path',
@@ -42,9 +43,26 @@ class QrCode extends Model
         'analytics_data' => 'json',
     ];
 
+    protected $appends = [
+        'image_url',
+    ];
+
+    /**
+     * Get the full URL for the QR code image
+     */
+    public function getImageUrlAttribute(): ?string
+    {
+        return $this->image_path ? asset('storage/' . $this->image_path) : null;
+    }
+
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function labels(): HasMany

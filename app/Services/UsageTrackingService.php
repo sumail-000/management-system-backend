@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\Product;
+use App\Models\QrCodeAnalytics;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
@@ -35,6 +36,17 @@ class UsageTrackingService
             $labelsThisMonth = $productsThisMonth; // Assuming 1 label per product
             $totalLabels = $totalProducts;
             
+            // Get QR code analytics using the QrCodeAnalytics model
+            $totalQrCodesCreated = QrCodeAnalytics::getTotalCreated($user->id);
+            $totalQrCodesDeleted = QrCodeAnalytics::getTotalDeleted($user->id);
+            $currentQrCodes = $totalQrCodesCreated - $totalQrCodesDeleted;
+            
+            // Get QR codes created this month
+            $qrCodesThisMonth = QrCodeAnalytics::where('user_id', $user->id)
+                ->where('event_type', 'created')
+                ->where('event_date', '>=', $currentMonth)
+                ->count();
+            
             $usage = [
                 'products' => [
                     'current_month' => $productsThisMonth,
@@ -48,6 +60,12 @@ class UsageTrackingService
                     'limit' => $user->membershipPlan?->label_limit ?? 0,
                     'unlimited' => $user->membershipPlan?->hasUnlimitedLabels() ?? false
                 ],
+                'qr_codes' => [
+                    'current_month' => $qrCodesThisMonth,
+                    'total' => $currentQrCodes,
+                    'limit' => $user->membershipPlan?->qr_code_limit ?? 0,
+                    'unlimited' => $user->membershipPlan?->hasUnlimitedQrCodes() ?? false
+                ],
                 'period' => [
                     'start' => $currentMonth->toDateString(),
                     'end' => $currentMonth->copy()->endOfMonth()->toDateString()
@@ -59,7 +77,10 @@ class UsageTrackingService
                 'products_used' => $productsThisMonth,
                 'product_limit' => $user->membershipPlan?->product_limit,
                 'labels_used' => $labelsThisMonth,
-                'label_limit' => $user->membershipPlan?->label_limit
+                'label_limit' => $user->membershipPlan?->label_limit,
+                'qr_codes_used' => $qrCodesThisMonth,
+                'qr_codes_total' => $currentQrCodes,
+                'qr_code_limit' => $user->membershipPlan?->qr_code_limit
             ]);
             
             return $usage;
@@ -79,6 +100,12 @@ class UsageTrackingService
                     'unlimited' => false
                 ],
                 'labels' => [
+                    'current_month' => 0,
+                    'total' => 0,
+                    'limit' => 0,
+                    'unlimited' => false
+                ],
+                'qr_codes' => [
                     'current_month' => 0,
                     'total' => 0,
                     'limit' => 0,

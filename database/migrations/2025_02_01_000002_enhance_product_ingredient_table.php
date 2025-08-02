@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::table('product_ingredient', function (Blueprint $table) {
             // Enhanced ingredient data from Edamam API
-            $table->string('text')->nullable()->after('unit'); // Original ingredient text
+            $table->string('text')->nullable()->after('order'); // Original ingredient text
             $table->decimal('quantity', 10, 3)->nullable()->after('text'); // Parsed quantity
             $table->string('measure')->nullable()->after('quantity'); // cup, tablespoon, etc.
             $table->decimal('weight', 10, 2)->nullable()->after('measure'); // Weight in grams
@@ -24,7 +24,6 @@ return new class extends Migration
             
             // Additional metadata
             $table->json('nutrition_data')->nullable()->after('is_main_ingredient'); // Individual ingredient nutrition
-            $table->json('allergens')->nullable()->after('nutrition_data'); // Ingredient-specific allergens
         });
     }
 
@@ -43,8 +42,7 @@ return new class extends Migration
                 'food_id',
                 'image_url',
                 'is_main_ingredient',
-                'nutrition_data',
-                'allergens'
+                'nutrition_data'
             ]);
         });
     }
