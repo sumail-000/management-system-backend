@@ -15,7 +15,7 @@ return new class extends Migration
             // Recipe basic information
             $table->string('recipe_uri')->nullable()->after('ingredient_notes');
             $table->string('recipe_source')->nullable()->after('recipe_uri');
-            $table->text('recipe_url')->nullable()->after('recipe_source');
+            $table->text('source_url')->nullable()->after('recipe_source');
             
             // Timing information
             $table->integer('prep_time')->nullable()->after('recipe_url'); // in minutes
@@ -48,7 +48,7 @@ return new class extends Migration
             $table->dropColumn([
                 'recipe_uri',
                 'recipe_source',
-                'recipe_url',
+                'source_url',
                 'prep_time',
                 'cook_time',
                 'total_time',
