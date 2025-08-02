@@ -46,13 +46,41 @@ return new class extends Migration
             
             // Plan-based permissions
             $table->boolean('basic_plan_features')->default(true);
-            $table->boolean('premium_plan_features')->default(false);
+            $table->boolean('pro_plan_features')->default(false);
             $table->boolean('enterprise_plan_features')->default(false);
             
             // API and system permissions
             $table->boolean('api_access')->default(true);
             $table->boolean('frontend_access')->default(true);
             $table->boolean('dashboard_permission')->default(true);
+            
+            // Middleware-specific permissions
+            $table->boolean('auth_sanctum_middleware')->default(true);
+            $table->boolean('token_refresh_middleware')->default(true);
+            $table->boolean('dashboard_access_middleware')->default(true);
+            
+            // Audit trail and logging permissions
+            $table->boolean('audit_trail_access')->default(true);
+            $table->boolean('user_action_tracking')->default(true);
+            $table->boolean('authentication_event_logging')->default(true);
+            $table->boolean('payment_subscription_logging')->default(true);
+            
+            // Frontend security permissions
+            $table->boolean('protected_routes_access')->default(true);
+            $table->boolean('conditional_rendering_permission')->default(true);
+            $table->boolean('state_management_permission')->default(true);
+            
+            // Data protection and ownership validation permissions
+            $table->boolean('data_protection_permission')->default(true);
+            $table->boolean('product_ownership_validation')->default(true);
+            $table->boolean('invoice_ownership_validation')->default(true);
+            $table->boolean('user_ownership_validation')->default(true);
+            
+            // Access control permissions
+            $table->boolean('token_based_authentication')->default(true);
+            $table->boolean('middleware_validation_permission')->default(true);
+            $table->boolean('payment_status_verification')->default(true);
+            $table->boolean('trial_expiration_monitoring')->default(true);
             
             $table->timestamps();
             

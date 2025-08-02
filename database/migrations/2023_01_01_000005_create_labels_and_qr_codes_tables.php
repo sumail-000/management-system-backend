@@ -14,8 +14,12 @@ return new class extends Migration
         // Create QR codes table first since labels will reference it
         Schema::create('qr_codes', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->nullable()->constrained()->cascadeOnDelete();
+            $table->foreignId('product_id')->nullable()->constrained()->cascadeOnDelete();
             $table->string('url_slug')->unique();
+            $table->string('unique_code')->nullable()->unique();
+            $table->boolean('is_premium')->default(false);
+            $table->json('analytics_data')->nullable();
             $table->string('image_path')->nullable();
             $table->integer('scan_count')->default(0);
             $table->timestamp('last_scanned_at')->nullable();

@@ -14,6 +14,7 @@ class PaymentMethod extends Model
         'type',
         'provider',
         'provider_payment_method_id',
+        'stripe_payment_method_id',
         'brand',
         'last_four',
         'expiry_month',
@@ -28,6 +29,8 @@ class PaymentMethod extends Model
         'is_default' => 'boolean',
         'is_active' => 'boolean',
         'verified_at' => 'datetime',
+        'expiry_month' => 'integer',
+        'expiry_year' => 'integer',
     ];
 
     protected $hidden = [

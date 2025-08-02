@@ -34,7 +34,9 @@ return new class extends Migration
             $table->boolean('product_bulk_operations')->default(true);
             $table->boolean('product_public_access')->default(true);
             $table->boolean('product_image_management')->default(true);
-            $table->boolean('product_categories_tags')->default(true);
+            $table->boolean('product_view_trashed')->default(true);
+            $table->boolean('product_categories_management')->default(true);
+            $table->boolean('product_tags_management')->default(true);
             
             // Billing specific actions
             $table->boolean('billing_information_management')->default(true);
@@ -44,6 +46,16 @@ return new class extends Migration
             $table->boolean('invoice_download')->default(true);
             $table->boolean('auto_renewal_control')->default(true);
             $table->boolean('payment_status_view')->default(true);
+            $table->boolean('payment_status_check')->default(true);
+            $table->boolean('cancellation_request')->default(true);
+            $table->boolean('cancellation_confirm')->default(true);
+            $table->boolean('cancellation_cancel')->default(true);
+            $table->boolean('auto_renewal_update')->default(true);
+            $table->boolean('subscription_details_view')->default(true);
+            
+            // Profile and plan management actions
+            $table->boolean('usage_statistics_view')->default(true);
+            $table->boolean('plan_recommendations_get')->default(true);
             
             $table->timestamps();
             

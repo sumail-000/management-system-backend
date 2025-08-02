@@ -23,6 +23,11 @@ return new class extends Migration
             $table->integer('qr_code_limit')->default(0); // 0 means unlimited
             $table->timestamps();
         });
+        
+        // Add foreign key constraint for users.membership_plan_id
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreign('membership_plan_id')->references('id')->on('membership_plans')->nullOnDelete();
+        });
     }
 
     /**
@@ -30,6 +35,11 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Remove foreign key constraint from users table first
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropForeign(['membership_plan_id']);
+        });
+        
         Schema::dropIfExists('membership_plans');
     }
 };

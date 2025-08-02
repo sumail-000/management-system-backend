@@ -15,9 +15,13 @@ return new class extends Migration
         Schema::create('settings', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->unique()->constrained()->cascadeOnDelete();
-            $table->string('language_preference')->default('english'); // 'english' or 'arabic'
-            $table->string('default_unit_system')->default('metric'); // 'metric' or 'imperial'
-            $table->string('default_label_format')->default('vertical'); // 'vertical' or 'horizontal'
+            $table->string('theme')->default('light'); // light, dark
+            $table->string('language')->default('english'); // english, arabic
+            $table->string('timezone')->default('UTC');
+            $table->boolean('email_notifications')->default(true);
+            $table->boolean('push_notifications')->default(true);
+            $table->string('default_serving_unit')->default('grams'); // grams, ounces, pounds, kilograms
+            $table->json('label_template_preferences')->nullable();
             $table->timestamps();
         });
 

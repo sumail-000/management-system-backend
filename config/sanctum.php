@@ -17,9 +17,8 @@ return [
 
     'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', sprintf(
         '%s%s',
-        'yournutritionsy.com,www.yournutritionsy.com',
-        Sanctum::currentApplicationUrlWithPort(),
-        // Sanctum::currentRequestHost(),
+        'localhost:8080,localhost:8081,127.0.0.1:8080,127.0.0.1:8081,yournutritionsy.com,www.yournutritionsy.com,',
+        Sanctum::currentApplicationUrlWithPort()
     ))),
 
     /*
