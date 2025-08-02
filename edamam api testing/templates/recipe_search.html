@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>🍲 Recipe Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🍲 Recipe Search</h1>
+        <form method="post">
+            <input type="text" name="query" value="{{ query }}" placeholder="Search for recipes..." required>
+            <button type="submit">Search</button>
+        </form>
+
+        {% if error %}
+            <div class="error">Error: {{ error }}</div>
+        {% endif %}
+
+        {% if recipes %}
+            <h2>Results:</h2>
+            <ul class="recipe-list">
+                {% for recipe in recipes %}
+                    <li class="recipe-card">
+                        <h3>{{ recipe.label }}</h3>
+                        {% if recipe.image %}
+                            <img src="{{ recipe.image }}" alt="{{ recipe.label }}" width="150">
+                        {% endif %}
+                        {% if recipe.calories is defined %}
+                            <p><strong>Calories:</strong> {{ "%.0f"|format(recipe.calories) }}</p>
+                        {% else %}
+                            <p><strong>Calories:</strong> Not available</p>
+                        {% endif %}
+                        {% if recipe.dietLabels %}
+                            <p><strong>Diet:</strong> {{ recipe.dietLabels|join(', ') }}</p>
+                        {% endif %}
+                        {% if recipe.ingredientLines %}
+                            <details>
+                                <summary><strong>Ingredients</strong></summary>
+                                <ul>
+                                    {% for ingredient in recipe.ingredientLines %}
+                                        <li>{{ ingredient }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </details>
+                        {% endif %}
+                        <p><a href="{{ recipe.url }}" target="_blank">View Full Recipe</a></p>
+                    </li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+
+        <br>
+        <a href="{{ url_for('home') }}">← Back to Home</a>
+    </div>
+</body>
+</html>

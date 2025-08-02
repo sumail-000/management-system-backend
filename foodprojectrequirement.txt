@@ -1,0 +1,105 @@
+1. Authentication & User Management
+• User Registration: Register with email/password.
+• Login / Logout: Token-based session handling.
+• Password Reset: One-time token via email.
+• User Profile Management: Store name, company, contact, tax ID.
+• User Categories: Implement roles: Basic, Premium, Enterprise.
+
+2. Product Management
+• Create / Edit / Delete Products: Product CRUD with soft-delete option.
+• Duplicate Product: Clone existing product entry.
+• Product Listing: Pagination, search, filter.
+• Pin / Favorite Product
+• Categorize Products: Tags like dairy, snacks, etc.
+
+3. Ingredient Entry & Receipt Input
+• Manual/Add Ingredients: Quantity, unit (g, kg, mg) → auto calculation.
+• Reorder Ingredients: Drag-and-drop reorder.
+• Add Notes: Internal only, not for label.
+• Auto-Tag Ingredients (using Edamam):
+ • Allergen detection (e.g. gluten, sulfites).
+ • Suggest tags like “sugar free”, “fat free”.
+• Tags cannot be manually edited.
+
+4. Nutrition Analysis (Use Edamam API)
+• Analyze Recipe: Use Edamam to calculate macros/micros.
+• Allergen Detection: Scan ingredients using Edamam tags.
+• View Nutrition Summary: Dashboard view + export option.
+• Flag Warnings: Alert for high sodium/sugar etc., based on regulation.
+
+5. Label Generator
+• Generate Label: Render bilingual (Arabic/English) labels.
+• Live Preview: Realtime view as inputs change.
+• Customize Units: g/mg/kcal/kJ toggle.
+• Format Selection: Vertical / horizontal compliant layout.
+• Add Logo/Branding
+• Generate Advanced QR Code: Linked to product page.
+• Download Label: Export to PDF/PNG.
+
+6. QR Code Generation
+• Auto-generate Unique QR (Premium only)
+• Scan & Redirect: Link QR to public product URL.
+• QR Analytics (Advanced): Track scan count per product.
+
+7. Public Product Page
+• Generate Public URL for each product.
+• Display Nutritional Info: Edamam data, formatted table.
+• Ingredient List with Allergen Tags
+• Show QR Code for Printing
+• Multilingual Toggle
+• Print View / Export Page
+
+8. Dashboard & Product Storage
+• Main Product Dashboard
+• Edit/Delete Product
+• Favorite/Pin Product
+• Sort/Filter by Category
+• Help Center Integration
+
+9. Settings & Configurations
+• Profile Settings
+• Language Switcher: Arabic/English toggle.
+• Unit Switching: Metric/Imperial, kcal/kJ.
+
+10. Admin Panel (Internal Only)
+• Manage Users: Suspend/delete/flag.
+• View/Remove Products: Admin moderation.
+• Delete Accounts: Data wipe.
+• Usage Analytics: Feature tracking per user.
+• Flagged Products Review
+
+11. External API Integration
+• Edamam Food Database API
+• Fetch nutrient data per ingredient.
+• Suggest allergen tags.
+• Auto-complete ingredients.
+• Updateable Data Source Tool (Admin): Update Edamam mapping data if needed.
+
+12. Membership Plans & Feature Restrictions
+Implement access control per plan:
+
+Basic Membership
+• Manual product entry only.
+• Max 3 product submissions/month.
+• Standard templates only.
+• Basic compliance feedback.
+• Self-help support only.
+
+Pro Membership
+• 20 product limit/month.
+• Access advanced label templates.
+• Queue priority for label checks.
+• Label validation PDF report.
+• Product dashboard & history.
+• Email support + onboarding.
+• Nutritionist/technician support (optional).
+
+Enterprise Membership
+• Bulk upload via Excel/CSV/API.
+• Dedicated account manager.
+• Full API access (sync, updates).
+• Custom badges/certificates.
+• Compliance dashboard.
+• Role-based team access.
+• Private label & brand management.
+• Regulatory update access.

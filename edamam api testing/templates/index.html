@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edamam Nutrition Analyzer</title>
+    <style>
+        body {
+            font-family: Tahoma, sans-serif;
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+        h2 { text-align: center; }
+        textarea, input[type="text"], button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 1em;
+        }
+        label { font-weight: bold; display: block; margin-top: 10px; }
+        .highlight-high { color: red; font-weight: bold; }
+        .result-block {
+            background: #fff;
+            padding: 15px;
+            border: 1px solid #ccc;
+            margin-top: 20px;
+        }
+        .label-box {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Edamam Nutrition Analyzer</h2>
+
+<form method="POST" action="/analyze">
+    <label>Product ID (optional)</label>
+    <input type="text" name="product_id" value="{{ product_id }}">
+
+    <label>Ingredients</label>
+    <textarea name="ingredients" rows="7" placeholder="Enter each ingredient on a new line like: 1 cup chopped chicken">{{ ingredients }}</textarea>
+
+    <button type="submit">Analyze</button>
+</form>
+
+{% if result %}
+<div class="result-block">
+    <h3>Nutrition Summary</h3>
+    <ul>
+        {% for key, nutrient in result.nutrients.items() %}
+            <li>
+                {{ nutrient.label }}:
+                {{ "%.2f"|format(nutrient.quantity) }} {{ nutrient.unit }}
+                {% if flags.get(key) == 'high' %}
+                    <span class="highlight-high">(High)</span>
+                {% endif %}
+            </li>
+        {% endfor %}
+    </ul>
+
+    <div class="label-box">
+        <strong>Health Labels:</strong><br>
+        {{ result.healthLabels | join(', ') }}
+    </div>
+
+    {% if result.cautions %}
+    <h4>Cautions</h4>
+    <ul>
+        {% for caution in result.cautions %}
+            <li>{{ caution }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if view_link %}
+    <a href="{{ view_link }}" style="display:inline-block; margin-top:15px; padding:10px 14px; background:#28a745; color:white; text-decoration:none; border-radius:5px;">
+        📄 View Full Product Page
+    </a>
+{% endif %}
+
+
+</body>
+</html>

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>🥘 Get Ingredients from Recipe Name</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+        h2 { text-align: center; color: #333; }
+        .form-container {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        input[type="text"], button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            font-size: 1em;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover { background: #0056b3; }
+        .recipe-result {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .recipe-image {
+            max-width: 200px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+        .ingredients-list {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .ingredients-list li {
+            margin: 8px 0;
+            padding: 5px;
+            background: #e9ecef;
+            border-radius: 4px;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .copy-btn:hover { background: #218838; }
+        .nav-links {
+            text-align: center;
+            margin-top: 30px;
+        }
+        .nav-links a {
+            margin: 0 10px;
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<h2>🥘 Get Ingredients from Recipe Name</h2>
+
+<div class="form-container">
+    <form method="POST">
+        <label for="recipe_name"><strong>Recipe Name:</strong></label>
+        <input type="text" 
+               id="recipe_name" 
+               name="recipe_name" 
+               value="{{ recipe_name }}" 
+               placeholder="e.g. Chicken Biryani, Chocolate Cake, Caesar Salad" 
+               required>
+        <button type="submit">🔍 Get Ingredients</button>
+    </form>
+</div>
+
+{% if error %}
+    <div class="error">
+        <strong>Error:</strong> {{ error }}
+    </div>
+{% endif %}
+
+{% if recipe_data %}
+<div class="recipe-result">
+    <h3>📋 Recipe: {{ recipe_data.recipe_name }}</h3>
+    
+    {% if recipe_data.image %}
+        <img src="{{ recipe_data.image }}" alt="{{ recipe_data.recipe_name }}" class="recipe-image">
+    {% endif %}
+    
+    <div class="ingredients-list">
+        <h4>🥕 Ingredients ({{ recipe_data.ingredients|length }} items):</h4>
+        <ul>
+            {% for ingredient in recipe_data.ingredients %}
+                <li>{{ ingredient }}</li>
+            {% endfor %}
+        </ul>
+        
+        <button class="copy-btn" onclick="copyIngredients()">📋 Copy All Ingredients</button>
+    </div>
+    
+    {% if recipe_data.url %}
+        <p><a href="{{ recipe_data.url }}" target="_blank">🔗 View Full Recipe</a></p>
+    {% endif %}
+</div>
+
+<script>
+function copyIngredients() {
+    const ingredients = [
+        {% for ingredient in recipe_data.ingredients %}
+            "{{ ingredient|replace('"', '\\"') }}",
+        {% endfor %}
+    ];
+    
+    const text = ingredients.join('\n');
+    navigator.clipboard.writeText(text).then(function() {
+        alert('✅ Ingredients copied to clipboard!');
+    }, function(err) {
+        console.error('Could not copy text: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('✅ Ingredients copied to clipboard!');
+    });
+}
+</script>
+{% endif %}
+
+<div class="nav-links">
+    <a href="{{ url_for('home') }}">🏠 Home</a> |
+    <a href="{{ url_for('recipe_search') }}">🍲 Recipe Search</a> |
+    <a href="{{ url_for('index') }}">🔬 Nutrition Analyzer</a>
+</div>
+
+</body>
+</html>

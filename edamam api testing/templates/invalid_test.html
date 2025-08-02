@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head><title>Invalid Ingredient Test</title></head>
+<body>
+<h2>Invalid Ingredient Test</h2>
+<form method="POST">
+    <button type="submit">Send Broken Ingredient</button>
+</form>
+
+{% if error %}
+<h3 style="color:red">Expected Error Response:</h3>
+<pre>{{ error }}</pre>
+{% elif result %}
+<h3>Unexpected Success 😅</h3>
+<pre>{{ result | tojson(indent=2) }}</pre>
+{% endif %}
+<a href="/">← Back to Analyzer</a>
+</body>
+</html>

@@ -1,0 +1,45 @@
+# Commands to run on your Hostinger server to debug the 500 error
+# Copy and paste these commands one by one into your SSH terminal
+
+# 1. First, let's check if .env file exists
+ls -la ~/domains/yournutritionsy.com/laravel_backend/.env
+
+# 2. If .env doesn't exist, create it from example
+cp ~/domains/yournutritionsy.com/laravel_backend/.env.example ~/domains/yournutritionsy.com/laravel_backend/.env
+
+# 3. Generate Laravel application key
+cd ~/domains/yournutritionsy.com/laravel_backend
+php artisan key:generate
+
+# 4. Clear all Laravel caches
+php artisan config:clear
+php artisan route:clear
+php artisan cache:clear
+php artisan view:clear
+
+# 5. Set proper permissions
+chmod -R 755 storage
+chmod -R 755 bootstrap/cache
+
+# 6. Check Laravel logs for errors
+tail -20 ~/domains/yournutritionsy.com/laravel_backend/storage/logs/laravel.log
+
+# 7. Test Laravel bootstrap
+cd ~/domains/yournutritionsy.com/public_html/api
+php -r "error_reporting(E_ALL); ini_set('display_errors', 1); try { require '../../../laravel_backend/bootstrap/app.php'; echo 'Bootstrap: OK\n'; } catch (Exception \$e) { echo 'Bootstrap Error: ' . \$e->getMessage() . '\n'; } catch (Error \$e) { echo 'Fatal Error: ' . \$e->getMessage() . '\n'; }"
+
+# 8. Test the API endpoint
+curl -s -o /dev/null -w 'HTTP Status: %{http_code}\n' https://yournutritionsy.com/api/membership-plans
+
+# 9. If still getting 500, check PHP error logs
+tail -20 ~/domains/yournutritionsy.com/public_html/error_log
+
+# 10. Check if routes are properly defined
+cd ~/domains/yournutritionsy.com/laravel_backend
+php artisan route:list | grep -i membership
+
+# 11. Test database connection
+php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'Database: Connected\n'; } catch (Exception \$e) { echo 'Database Error: ' . \$e->getMessage() . '\n'; }"
+
+# 12. Final test with verbose output
+curl -v https://yournutritionsy.com/api/membership-plans
