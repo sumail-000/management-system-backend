@@ -37,9 +37,7 @@ class StripePaymentController extends Controller
             $request->validate([
                 'membership_plan_id' => 'required|exists:membership_plans,id',
                 'email' => 'required|email',
-                'card_number' => 'required|string',
-                'expiry_date' => 'required|string',
-                'cvc' => 'required|string',
+                'payment_method_id' => 'required|string',
                 'cardholder_name' => 'required|string',
                 'billing_address' => 'required|array',
                 'billing_address.line1' => 'required|string',
@@ -93,29 +91,9 @@ class StripePaymentController extends Controller
                 Log::info('Created Stripe customer', ['customer_id' => $customer->id]);
             }
 
-            // Parse expiry date
-            $expiryParts = explode('/', $request->expiry_date);
-            $expMonth = (int) $expiryParts[0];
-            $expYear = (int) ('20' . $expiryParts[1]);
-
-            // Create payment method
-            $paymentMethod = $this->stripeService->createPaymentMethod([
-                'number' => str_replace(' ', '', $request->card_number),
-                'exp_month' => $expMonth,
-                'exp_year' => $expYear,
-                'cvc' => $request->cvc,
-                'name' => $request->cardholder_name,
-                'email' => $request->email,
-                'address' => [
-                    'line1' => $request->billing_address['line1'],
-                    'line2' => $request->billing_address['line2'] ?? null,
-                    'city' => $request->billing_address['city'],
-                    'state' => $request->billing_address['state'],
-                    'postal_code' => $request->billing_address['postal_code'],
-                    'country' => $request->billing_address['country'],
-                ]
-            ]);
-            Log::info('Created payment method', ['payment_method_id' => $paymentMethod->id]);
+            // Get the payment method from Stripe using the provided payment_method_id
+            $paymentMethod = $this->stripeService->getPaymentMethod($request->payment_method_id);
+            Log::info('Retrieved payment method', ['payment_method_id' => $paymentMethod->id]);
 
             // Attach payment method to customer
             $this->stripeService->attachPaymentMethodToCustomer(
@@ -157,14 +135,11 @@ class StripePaymentController extends Controller
                     ]
                 );
 
-                // Get card brand from payment method
+                // Get card brand and details from payment method
                 $cardBrand = $paymentMethod->card->brand ?? 'unknown';
-                $lastFour = $paymentMethod->card->last4 ?? substr(str_replace(' ', '', $request->card_number), -4);
-                
-                // Parse expiry date
-                $expiryParts = explode('/', $request->expiry_date);
-                $expMonth = (int) $expiryParts[0];
-                $expYear = (int) ('20' . $expiryParts[1]);
+                $lastFour = $paymentMethod->card->last4 ?? '0000';
+                $expMonth = $paymentMethod->card->exp_month ?? 1;
+                $expYear = $paymentMethod->card->exp_year ?? date('Y');
 
                 // First, deactivate all existing payment methods for this user
                 PaymentMethod::where('user_id', $user->id)->update([
@@ -588,30 +563,20 @@ class StripePaymentController extends Controller
     public function updatePaymentMethod(Request $request): JsonResponse
     {
         $request->validate([
-            'card_number' => 'required|string',
-            'expiry_date' => 'required|string|regex:/^[0-1][0-9]\/[0-9]{2}$/',
-            'cvc' => 'required|string|min:3|max:4',
-            'cardholder_name' => 'required|string|max:255'
+            'payment_method_id' => 'required|string'
         ]);
 
         /** @var User $user */
         $user = Auth::user();
 
         try {
-            // Parse expiry date
-            $expiryParts = explode('/', $request->expiry_date);
-            $expMonth = (int) $expiryParts[0];
-            $expYear = (int) ('20' . $expiryParts[1]);
-
-            // Create new payment method with Stripe
-            $paymentMethod = $this->stripeService->createPaymentMethod([
-                'number' => str_replace(' ', '', $request->card_number),
-                'exp_month' => $expMonth,
-                'exp_year' => $expYear,
-                'cvc' => $request->cvc,
-                'name' => $request->cardholder_name,
-                'email' => $user->email
-            ]);
+            // Retrieve the payment method from Stripe using the provided ID
+            $paymentMethod = $this->stripeService->retrievePaymentMethod($request->payment_method_id);
+            
+            // Verify the payment method exists and is valid
+            if (!$paymentMethod) {
+                throw new Exception('Invalid payment method ID');
+            }
 
             // Attach to customer
             $this->stripeService->attachPaymentMethodToCustomer(
@@ -627,9 +592,12 @@ class StripePaymentController extends Controller
 
             // Update local database
             $savedPaymentMethod = null;
-            DB::transaction(function () use ($user, $paymentMethod, $request, $expMonth, $expYear, &$savedPaymentMethod) {
+            DB::transaction(function () use ($user, $paymentMethod, &$savedPaymentMethod) {
                 $cardBrand = ucfirst($paymentMethod->card->brand);
                 $lastFour = $paymentMethod->card->last4;
+                $expMonth = $paymentMethod->card->exp_month;
+                $expYear = $paymentMethod->card->exp_year;
+                $cardholderName = $paymentMethod->billing_details->name ?? '';
 
                 // Deactivate all existing payment methods
                 PaymentMethod::where('user_id', $user->id)->update([
@@ -651,7 +619,7 @@ class StripePaymentController extends Controller
                         'stripe_payment_method_id' => $paymentMethod->id,
                         'expiry_month' => (int)$expMonth,
                         'expiry_year' => (int)$expYear,
-                        'cardholder_name' => $request->cardholder_name,
+                        'cardholder_name' => $cardholderName,
                         'is_default' => true,
                         'is_active' => true,
                         'verified_at' => now()

@@ -3,6 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\User;
+use App\Services\StripeService;
+use App\Services\EmailService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -22,6 +24,16 @@ class ProcessCancellationRequests extends Command
      * @var string
      */
     protected $description = 'Process subscription cancellation requests and handle 3-day waiting period';
+
+    protected $stripeService;
+    protected $emailService;
+
+    public function __construct(StripeService $stripeService, EmailService $emailService)
+    {
+        parent::__construct();
+        $this->stripeService = $stripeService;
+        $this->emailService = $emailService;
+    }
 
     /**
      * Execute the console command.
@@ -63,6 +75,24 @@ class ProcessCancellationRequests extends Command
     private function processCancellation(User $user)
     {
         try {
+            // Cancel Stripe subscription if exists
+            if ($user->stripe_subscription_id) {
+                try {
+                    $this->stripeService->cancelSubscription($user->stripe_subscription_id);
+                    Log::info('Stripe subscription cancelled successfully', [
+                        'user_id' => $user->id,
+                        'stripe_subscription_id' => $user->stripe_subscription_id
+                    ]);
+                } catch (\Exception $stripeError) {
+                    Log::error('Failed to cancel Stripe subscription', [
+                        'user_id' => $user->id,
+                        'stripe_subscription_id' => $user->stripe_subscription_id,
+                        'error' => $stripeError->getMessage()
+                    ]);
+                    // Continue with local cancellation even if Stripe fails
+                }
+            }
+
             // Update user status to cancelled/expired
             $user->update([
                 'payment_status' => 'expired',
@@ -70,6 +100,16 @@ class ProcessCancellationRequests extends Command
                 'subscription_ends_at' => now(),
                 'auto_renew' => false
             ]);
+            
+            // Send cancellation confirmation email
+            try {
+                $this->emailService->sendSubscriptionCancellationEmail($user, $user->cancellation_reason);
+            } catch (\Exception $emailError) {
+                Log::error('Failed to send cancellation email', [
+                    'user_id' => $user->id,
+                    'error' => $emailError->getMessage()
+                ]);
+            }
             
             Log::info('Subscription cancelled and processed', [
                 'user_id' => $user->id,

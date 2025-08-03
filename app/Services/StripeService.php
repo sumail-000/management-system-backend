@@ -92,6 +92,19 @@ class StripeService
     }
 
     /**
+     * Get a payment method by ID
+     */
+    public function getPaymentMethod($paymentMethodId)
+    {
+        try {
+            return PaymentMethod::retrieve($paymentMethodId);
+        } catch (Exception $e) {
+            Log::error('Stripe payment method retrieval failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
      * Attach payment method to customer
      */
     public function attachPaymentMethodToCustomer($paymentMethodId, $customerId)
@@ -290,6 +303,19 @@ class StripeService
             ]);
         } catch (Exception $e) {
             Log::error('Stripe customer default payment method update failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Retrieve a payment method from Stripe
+     */
+    public function retrievePaymentMethod(string $paymentMethodId)
+    {
+        try {
+            return PaymentMethod::retrieve($paymentMethodId);
+        } catch (Exception $e) {
+            Log::error('Stripe payment method retrieval failed: ' . $e->getMessage());
             throw $e;
         }
     }
