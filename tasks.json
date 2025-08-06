@@ -1,0 +1,52 @@
+{
+  "requests": [
+    {
+      "requestId": "req-1",
+      "originalRequest": "Analyze the relationship between nutrition data and package configuration serving size, and how it affects the nutrition label display",
+      "splitDetails": "Need to understand the correlation between nutrition calculations, serving size configurations, and how changes in package configuration impact the FDA nutrition label display",
+      "tasks": [
+        {
+          "id": "task-1",
+          "title": "Analyze nutrition data flow in ProductForm component",
+          "description": "Examine how nutrition data is calculated, stored, and processed in the ProductForm component, including the analyzeNutrition function, nutrition proportions calculation, and local recalculation methods",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Analyzed nutrition data flow including state management (nutritionData, rawNutritionData, perServingData), key functions (analyzeNutrition, calculateNutritionProportions, recalculateNutritionLocally, updateNutritionForServingSize), and data flow triggers through useEffect monitoring ingredient changes."
+        },
+        {
+          "id": "task-2",
+          "title": "Study package configuration serving size options",
+          "description": "Investigate the two serving size configuration modes: 'by package size' and 'by serving size', understanding the input fields, calculations, and state management for each mode",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Analyzed two package configuration modes: 'by package size' (netWeightPerPackage, servingsPerPackage) and 'by serving size' (servingSizeWeight, servingSizeNumber). Each mode has specific state variables, UI fields, event handlers, and calculation displays. Mode selection uses radio buttons with conditional rendering."
+        },
+        {
+          "id": "task-3",
+          "title": "Map serving size impact on nutrition calculations",
+          "description": "Trace how changes in serving size weight, serving size number, servings per package, and net weight per package affect the nutrition data calculations and FDA label display",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Mapped serving size impact flow: servingSizeWeight/Number changes trigger updateNutritionForServingSize() which scales nutrition values by servingNumber factor. servingsPerContainer changes trigger calculatePerServingNutrition(). Core scaling formula: (rawValue / yield) * scalingFactor. Package size mode currently only affects display calculations, while serving size mode has functional handlers that update FDA label display."
+        },
+        {
+          "id": "task-4",
+          "title": "Examine FDA nutrition label data transformation",
+          "description": "Analyze how raw nutrition data is transformed into FDA-compliant format, including the mapPerServingDataToFDAFormat function and updateNutritionForServingSize calculations",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Analyzed FDA transformation pipeline: API Response → NutritionData → PerServingNutritionData → FDANutritionData → Label Display. Key transformations include scaling by servingNumber factor, rounding calories and nutrients to appropriate decimals, creating FDA-compliant structure with serving size in grams, and final conversion via mapPerServingDataToFDAFormat() for display in FDANutritionLabel component."
+        },
+        {
+          "id": "task-5",
+          "title": "Document correlation patterns and dependencies",
+          "description": "Create a comprehensive report documenting the relationships, data flow, calculation dependencies, and how package configuration changes propagate through to the final nutrition label display",
+          "done": true,
+          "approved": false,
+          "completedDetails": "Created comprehensive correlation report documenting: complete data flow architecture from ingredients to FDA display, package configuration impact matrix showing only 'by serving size' mode affects FDA labels, serving size correlation patterns (weight-driven, number-driven, container servings), critical calculation dependencies with core scaling formula, functional vs non-functional features analysis, complete data transformation chain, and key insights about real-time updates, scaling logic, local optimization, and FDA compliance."
+        }
+      ],
+      "completed": false
+    }
+  ]
+}
