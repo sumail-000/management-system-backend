@@ -15,8 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->text('description')->nullable();
-            $table->string('edamam_food_id')->nullable(); // For API reference
-            $table->json('allergens')->nullable();
+
             $table->json('tags')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();

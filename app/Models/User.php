@@ -478,13 +478,12 @@ class User extends Authenticatable
             'month' => now()->format('Y-m'),
         ], [
             'products' => 0,
-            'nutrition_analyses' => 0,
             'qr_codes' => 0,
             'labels' => 0,
         ]);
 
         // Increment the specific feature usage
-        if (in_array($feature, ['products', 'nutrition_analyses', 'qr_codes', 'labels'])) {
+        if (in_array($feature, ['products','qr_codes', 'labels'])) {
             $usage->increment($feature);
         }
     }

@@ -51,16 +51,7 @@ class RouteServiceProvider extends ServiceProvider
                 });
         });
 
-        RateLimiter::for('food_autocomplete', function (Request $request) {
-            return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip())
-                ->response(function (Request $request, array $headers) {
-                    return response()->json([
-                        'error' => 'Rate limit exceeded',
-                        'message' => 'Too many food autocomplete requests. Please try again later.',
-                        'retry_after' => $headers['Retry-After'] ?? 60
-                    ], 429, $headers);
-                });
-        });
+
 
         RateLimiter::for('food_search', function (Request $request) {
             return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip())

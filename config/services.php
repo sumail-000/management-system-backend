@@ -42,25 +42,18 @@ return [
     ],
 
     'edamam' => [
-        'nutrition' => [
-            'app_id' => env('EDAMAM_NUTRITION_APP_ID'),
-            'app_key' => env('EDAMAM_NUTRITION_APP_KEY'),
-            'api_url' => env('EDAMAM_NUTRITION_API_URL'),
-        ],
-        'food' => [
-            'app_id' => env('EDAMAM_FOOD_APP_ID'),
-            'app_key' => env('EDAMAM_FOOD_APP_KEY'),
-            'api_url' => env('EDAMAM_FOOD_API_URL'),
-        ],
-        'recipe' => [
-            'app_id' => env('EDAMAM_RECIPE_APP_ID'),
-            'app_key' => env('EDAMAM_RECIPE_APP_KEY'),
-            'api_url' => env('EDAMAM_RECIPE_API_URL'),
-        ],
-        'user_id' => env('EDAMAM_USER_ID'),
-        'timeout' => env('EDAMAM_TIMEOUT', 30),
-        'max_retries' => env('EDAMAM_MAX_RETRIES', 3),
-        'retry_delay' => env('EDAMAM_RETRY_DELAY', 1000),
+        'food_app_id' => env('EDAMAM_FOOD_APP_ID'),
+        'food_app_key' => env('EDAMAM_FOOD_APP_KEY'),
+
+        'food_parser_url' => env('EDAMAM_FOOD_PARSER_URL', 'https://api.edamam.com/api/food-database/v2/parser'),
+        'nutrition_app_id' => env('EDAMAM_NUTRITION_APP_ID'),
+        'nutrition_app_key' => env('EDAMAM_NUTRITION_APP_KEY'),
+        'nutrition_api_url' => env('EDAMAM_NUTRITION_API_URL', 'https://api.edamam.com/api/nutrition-details'),
+        'recipe_app_id' => env('EDAMAM_RECIPE_APP_ID'),
+        'recipe_app_key' => env('EDAMAM_RECIPE_APP_KEY'),
+        'recipe_api_url' => env('EDAMAM_RECIPE_API_URL', 'https://api.edamam.com/api/recipes/v2'),
+        'recipe_user_id' => env('EDAMAM_USER_ID'),
+        'timeout' => env('EDAMAM_TIMEOUT', 10),
     ],
 
 ];

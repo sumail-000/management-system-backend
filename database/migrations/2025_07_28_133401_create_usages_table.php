@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('month'); // Format: YYYY-MM
             $table->integer('products')->default(0);
-            $table->integer('nutrition_analyses')->default(0);
+
             $table->integer('qr_codes')->default(0);
             $table->integer('labels')->default(0);
             $table->timestamps();

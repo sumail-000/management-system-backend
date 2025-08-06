@@ -20,7 +20,7 @@ return new class extends Migration
             $table->string('timezone')->default('UTC');
             $table->boolean('email_notifications')->default(true);
             $table->boolean('push_notifications')->default(true);
-            $table->string('default_serving_unit')->default('grams'); // grams, ounces, pounds, kilograms
+
             $table->json('label_template_preferences')->nullable();
             $table->timestamps();
         });

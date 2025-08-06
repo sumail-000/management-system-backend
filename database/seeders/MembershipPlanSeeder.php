@@ -28,7 +28,7 @@ class MembershipPlanSeeder extends Seeder
                     'Basic compliance feedback',
                     'Self-help support',
                     'Email notifications',
-                    'Basic nutrition analysis'
+
                 ],
                 'product_limit' => 3,
                 'label_limit' => 10,
@@ -46,7 +46,7 @@ class MembershipPlanSeeder extends Seeder
                     'Label validation PDF reports',
                     'Product dashboard & history',
                     'Email + chat support',
-                    'Nutritionist support',
+
                     'QR code generation',
                     'Multi-language labels',
                     'Allergen detection'

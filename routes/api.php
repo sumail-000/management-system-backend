@@ -8,12 +8,11 @@ use App\Http\Controllers\Api\UsageController;
 use App\Http\Controllers\Api\StripePaymentController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\QrCodeController;
+use App\Http\Controllers\Api\FoodController;
+use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\EdamamNutritionController;
-use App\Http\Controllers\EdamamFoodController;
-use App\Http\Controllers\EdamamRecipeController;
-use App\Http\Controllers\NutritionAutoTagController;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -55,7 +54,7 @@ Route::post('/password/email', [AuthController::class, 'sendPasswordResetOtp']);
 // Public Routes
 Route::get('/products/public', [ProductController::class, 'public']);
 Route::get('/products/public/{id}', [ProductController::class, 'getPublicById']);
-Route::get('/ingredients/search', [IngredientController::class, 'search']);
+
 
 // QR Code public routes
 Route::post('/qr-codes/{qrCodeId}/scan', [QrCodeController::class, 'trackScan'])->name('api.qr-codes.scan');
@@ -133,9 +132,6 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
         Route::get('/{collection}/products', [\App\Http\Controllers\CollectionController::class, 'getProducts']);
     });
     
-    // Ingredient Management
-    Route::apiResource('ingredients', IngredientController::class);
-    
     // Usage Tracking
     Route::get('/user/usage', [UsageController::class, 'getCurrentUsage']);
     Route::post('/user/check-permission', [UsageController::class, 'checkPermission']);
@@ -160,17 +156,6 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
         Route::get('/settings/options', [SettingsController::class, 'options']);
     });
     
-    // Nutrition Auto Tags Routes
-    Route::post('/nutrition/auto-tags/save', [NutritionAutoTagController::class, 'saveAutoTags']);
-    
-    // Nutrition Data Routes
-    Route::prefix('nutrition')->group(function () {
-        Route::post('/save-data', [EdamamNutritionController::class, 'saveNutritionData'])
-            ->middleware('throttle:nutrition_analysis');
-        Route::post('/check-data', [EdamamNutritionController::class, 'checkNutritionData']);
-        Route::post('/load-data', [EdamamNutritionController::class, 'loadNutritionData']);
-    });
-    
     // QR Code Management Routes
     Route::prefix('qr-codes')->name('api.qr-codes.')->group(function () {
         Route::get('/', [QrCodeController::class, 'index'])->name('index');
@@ -184,56 +169,28 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
         Route::get('/{qrCodeId}/analytics', [QrCodeController::class, 'qrCodeAnalytics'])->name('qr-analytics');
     });
     
+    // Food Database API Routes (Edamam Integration)
+    Route::prefix('food')->group(function () {
+        Route::post('/search-recipes', [FoodController::class, 'searchRecipes']);
+        Route::post('/search-food-database', [FoodController::class, 'searchFoodDatabase']);
+        Route::post('/parse-ingredient', [FoodController::class, 'parseIngredient']);
+        Route::post('/nutrients', [FoodController::class, 'getFoodNutrients']);
+    });
+    
+    // Nutrition Analysis API Routes (Edamam Integration)
+    Route::prefix('nutrition')->group(function () {
+        Route::post('/analyze', [NutritionController::class, 'analyzeNutrition']);
+        Route::post('/build-ingredient-string', [NutritionController::class, 'buildIngredientString']);
+    });
+    
     // Other protected routes will be added here
 });
 
 
-
-// Edamam API Routes (require authentication and dashboard access)
-Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access', 'edamam.api'])->prefix('edamam')->group(function () {
-    // Nutrition Analysis Routes
-    Route::prefix('nutrition')->group(function () {
-        Route::post('/analyze', [EdamamNutritionController::class, 'analyze'])
-            ->middleware('throttle:nutrition_analysis');
-        Route::post('/batch-analyze', [EdamamNutritionController::class, 'batchAnalyze'])
-            ->middleware('throttle:nutrition_batch');
-        Route::post('/save', [EdamamNutritionController::class, 'saveNutritionData'])
-            ->middleware('throttle:nutrition_analysis');
-        Route::get('/history', [EdamamNutritionController::class, 'history']);
-        Route::delete('/cache', [EdamamNutritionController::class, 'clearCache']);
-    });
     
-    // Food Database Routes
-    Route::prefix('food')->group(function () {
-        Route::get('/autocomplete', [EdamamFoodController::class, 'autocomplete'])
-            ->middleware('throttle:food_autocomplete');
-        Route::get('/search', [EdamamFoodController::class, 'search'])
-            ->middleware('throttle:food_search');
-        Route::get('/upc/{upc}', [EdamamFoodController::class, 'getByUpc'])
-            ->middleware('throttle:food_upc');
-        Route::get('/popular', [EdamamFoodController::class, 'popular']);
-        Route::get('/categories', [EdamamFoodController::class, 'categories']);
-        Route::delete('/cache', [EdamamFoodController::class, 'clearCache']);
-    });
-    
-    // Recipe Search Routes
-    Route::prefix('recipes')->group(function () {
-        Route::get('/search', [EdamamRecipeController::class, 'search'])
-            ->middleware('throttle:recipe_search');
-        Route::get('/show', [EdamamRecipeController::class, 'show'])
-            ->middleware('throttle:recipe_details');
-        Route::get('/random', [EdamamRecipeController::class, 'random'])
-            ->middleware('throttle:recipe_random');
-        Route::get('/suggest', [EdamamRecipeController::class, 'suggest'])
-            ->middleware('throttle:recipe_suggest');
-        Route::post('/generate-ingredients', [EdamamRecipeController::class, 'generateIngredients'])
-            ->middleware('throttle:recipe_search');
-        Route::get('/filters', [EdamamRecipeController::class, 'filters']);
-        Route::delete('/cache', [EdamamRecipeController::class, 'clearCache']);
-    });
 });
 
-    // Ingredients Generation Route (alias for easier access)
-    Route::post('/ingredients/generate', [EdamamRecipeController::class, 'generateIngredients'])
-        ->middleware('throttle:recipe_search');
-});
+
+
+
+

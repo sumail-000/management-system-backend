@@ -14,14 +14,12 @@ class Usage extends Model
         'user_id',
         'month',
         'products',
-        'nutrition_analyses',
         'qr_codes',
         'labels',
     ];
 
     protected $casts = [
         'products' => 'integer',
-        'nutrition_analyses' => 'integer',
         'qr_codes' => 'integer',
         'labels' => 'integer',
     ];

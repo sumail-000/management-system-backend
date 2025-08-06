@@ -18,9 +18,6 @@ class Product extends Model
         'name',
         'description',
         'category_id',
-        'serving_size',
-        'serving_unit',
-        'servings_per_container',
         'is_public',
         'is_pinned',
         'is_favorite',
@@ -29,54 +26,13 @@ class Product extends Model
         'image_path',
         'ingredient_notes',
         'ingredients_data',
-        // Recipe fields
-        'recipe_uri',
-        'recipe_source',
-        'source_url',
-        'prep_time',
-        'cook_time',
-        'total_time',
-        'skill_level',
-        'time_category',
-        'cuisine_type',
-        'difficulty',
-        'total_co2_emissions',
-        'co2_emissions_class',
-        'recipe_yield',
-        'total_weight',
-        'weight_per_serving',
-        'total_recipe_calories',
-        'calories_per_serving_recipe',
-        // Recipe metadata
-        'diet_labels',
-        'health_labels',
-        'caution_labels',
-        'meal_types',
-        'dish_types',
-        'recipe_tags',
-        // Recipe rating and nutrition score
-        'datametrics_rating',
-        'nutrition_score',
-        // Individual macronutrient fields per serving
-        'protein_per_serving',
-        'carbs_per_serving',
-        'fat_per_serving',
     ];
 
     protected $casts = [
         'is_public' => 'boolean',
         'is_pinned' => 'boolean',
         'is_favorite' => 'boolean',
-        'serving_size' => 'decimal:2',
-        'servings_per_container' => 'integer',
         'ingredients_data' => 'array',
-        // Recipe metadata casts
-        'diet_labels' => 'array',
-        'health_labels' => 'array',
-        'caution_labels' => 'array',
-        'meal_types' => 'array',
-        'dish_types' => 'array',
-        'recipe_tags' => 'array',
     ];
 
     protected $appends = [
@@ -107,22 +63,6 @@ class Product extends Model
     public function setIngredientsAttribute(array $ingredients): void
     {
         $this->ingredients_data = $ingredients;
-    }
-
-    /**
-     * Get nutrition data from the first ingredient that has it
-     */
-    public function getNutritionalDataAttribute(): ?array
-    {
-        $ingredients = $this->ingredients_data ?? [];
-        
-        foreach ($ingredients as $ingredient) {
-            if (isset($ingredient['nutrition_data']) && !empty($ingredient['nutrition_data'])) {
-                return $ingredient['nutrition_data'];
-            }
-        }
-        
-        return null;
     }
 
     // Removed old relationships - ingredients now stored as JSON in ingredients_data column

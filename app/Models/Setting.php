@@ -17,7 +17,6 @@ class Setting extends Model
         'timezone',
         'email_notifications',
         'push_notifications',
-        'default_serving_unit',
         'label_template_preferences',
     ];
 
