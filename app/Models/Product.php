@@ -22,10 +22,19 @@ class Product extends Model
         'is_pinned',
         'is_favorite',
         'status',
+        'creation_step',
         'image_url',
         'image_path',
         'ingredient_notes',
         'ingredients_data',
+        'nutrition_data',
+        'serving_configuration',
+        'total_weight',
+        'servings_per_container',
+        'serving_size_grams',
+        'ingredients_updated_at',
+        'nutrition_updated_at',
+        'serving_updated_at',
     ];
 
     protected $casts = [
@@ -33,6 +42,13 @@ class Product extends Model
         'is_pinned' => 'boolean',
         'is_favorite' => 'boolean',
         'ingredients_data' => 'array',
+        'nutrition_data' => 'array',
+        'serving_configuration' => 'array',
+        'total_weight' => 'decimal:2',
+        'serving_size_grams' => 'decimal:2',
+        'ingredients_updated_at' => 'datetime',
+        'nutrition_updated_at' => 'datetime',
+        'serving_updated_at' => 'datetime',
     ];
 
     protected $appends = [
@@ -63,6 +79,69 @@ class Product extends Model
     public function setIngredientsAttribute(array $ingredients): void
     {
         $this->ingredients_data = $ingredients;
+    }
+
+    /**
+     * Set nutrition data to JSON column
+     */
+    public function setNutritionDataAttribute(?array $nutritionData): void
+    {
+        $this->attributes['nutrition_data'] = $nutritionData ? json_encode($nutritionData) : null;
+    }
+
+    /**
+     * Get nutrition data from JSON column
+     */
+    public function getNutritionDataAttribute(): ?array
+    {
+        return $this->attributes['nutrition_data'] ? json_decode($this->attributes['nutrition_data'], true) : null;
+    }
+
+    /**
+     * Set serving configuration to JSON column
+     */
+    public function setServingConfigurationAttribute(?array $servingConfig): void
+    {
+        $this->attributes['serving_configuration'] = $servingConfig ? json_encode($servingConfig) : null;
+    }
+
+    /**
+     * Get serving configuration from JSON column
+     */
+    public function getServingConfigurationAttribute(): ?array
+    {
+        return $this->attributes['serving_configuration'] ? json_decode($this->attributes['serving_configuration'], true) : null;
+    }
+
+    /**
+     * Check if recipe creation is complete
+     */
+    public function isCreationComplete(): bool
+    {
+        return $this->creation_step === 'completed';
+    }
+
+    /**
+     * Update creation step and timestamp
+     */
+    public function updateCreationStep(string $step): void
+    {
+        $this->creation_step = $step;
+        
+        // Update relevant timestamp
+        switch ($step) {
+            case 'ingredients_added':
+                $this->ingredients_updated_at = now();
+                break;
+            case 'nutrition_analyzed':
+                $this->nutrition_updated_at = now();
+                break;
+            case 'serving_configured':
+                $this->serving_updated_at = now();
+                break;
+        }
+        
+        $this->save();
     }
 
     // Removed old relationships - ingredients now stored as JSON in ingredients_data column

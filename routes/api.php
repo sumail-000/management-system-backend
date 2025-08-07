@@ -97,6 +97,19 @@ Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
 
 // Protected Routes (require authentication and dashboard access)
 Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(function () {
+    // Progressive Recipe Creation Routes (must come before apiResource)
+    Route::prefix('products/{id}')->group(function () {
+        Route::post('/ingredients', [ProductController::class, 'addIngredients']);
+        Route::post('/nutrition', [ProductController::class, 'saveNutritionData']);
+        Route::post('/serving', [ProductController::class, 'configureServing']);
+        Route::post('/complete', [ProductController::class, 'completeRecipe']);
+        Route::get('/progress', [ProductController::class, 'getProgress']);
+        
+        // Individual ingredient management
+        Route::put('/ingredients/{ingredientId}', [ProductController::class, 'updateIngredient']);
+        Route::delete('/ingredients/{ingredientId}', [ProductController::class, 'removeIngredient']);
+    });
+    
     // Product-specific routes (must come before apiResource)
     Route::post('/products/metrics', [ProductController::class, 'getMetrics']);
     Route::post('/products/convert-units', [ProductController::class, 'convertUnits']);
