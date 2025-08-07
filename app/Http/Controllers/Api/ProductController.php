@@ -278,11 +278,14 @@ class ProductController extends Controller
 
             $validator = Validator::make($request->all(), [
                 'nutrition_data' => 'required|array',
-                'nutrition_data.yield' => 'required|numeric|min:1',
                 'nutrition_data.calories' => 'required|numeric|min:0',
-                'nutrition_data.totalWeight' => 'required|numeric|min:0',
-                'nutrition_data.totalNutrients' => 'required|array',
-                'nutrition_data.totalDaily' => 'required|array',
+                'nutrition_data.total_weight' => 'required|numeric|min:0',
+                'nutrition_data.yield' => 'required|numeric|min:1',
+                'nutrition_data.servings_per_container' => 'required|integer|min:1',
+                'nutrition_data.macronutrients' => 'required|array',
+                'nutrition_data.vitamins_minerals' => 'required|array',
+                'nutrition_data.daily_values' => 'required|array',
+                'nutrition_data.per_serving_data' => 'nullable|array',
                 'per_serving_data' => 'nullable|array',
                 'servings_per_container' => 'required|integer|min:1',
             ]);
@@ -562,6 +565,151 @@ class ProductController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to remove ingredient'
+            ], 500);
+        }
+    }
+
+    /**
+     * Extract image URL from Google/web URL for recipe images
+     */
+    public function extractImageUrl(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'url' => 'required|url|max:2048',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid URL provided',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $url = $request->url;
+            
+            // Basic URL validation and processing
+            $parsedUrl = parse_url($url);
+            if (!$parsedUrl || !isset($parsedUrl['scheme']) || !isset($parsedUrl['host'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid URL format'
+                ], 422);
+            }
+
+            $extractedImageUrl = $this->extractActualImageUrl($url);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Image URL processed successfully',
+                'data' => [
+                    'image_url' => $extractedImageUrl,
+                    'original_url' => $url,
+                    'processed_at' => now()->toISOString(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error extracting image URL: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to process image URL'
+            ], 500);
+        }
+    }
+
+    /**
+     * Extract actual image URL from various sources (Google Images, etc.)
+     */
+    private function extractActualImageUrl(string $url): string
+    {
+        $parsedUrl = parse_url($url);
+        
+        // Handle Google Images URLs
+        if (isset($parsedUrl['host']) && strpos($parsedUrl['host'], 'google.com') !== false) {
+            if (isset($parsedUrl['query'])) {
+                parse_str($parsedUrl['query'], $queryParams);
+                
+                // Extract from imgurl parameter (Google Images)
+                if (isset($queryParams['imgurl'])) {
+                    $decodedUrl = urldecode($queryParams['imgurl']);
+                    Log::info('Extracted Google Images URL: ' . $decodedUrl);
+                    return $decodedUrl;
+                }
+            }
+        }
+        
+        // Handle other image hosting services or direct image URLs
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+        $pathInfo = pathinfo($parsedUrl['path'] ?? '');
+        
+        if (isset($pathInfo['extension']) && in_array(strtolower($pathInfo['extension']), $imageExtensions)) {
+            // Direct image URL
+            return $url;
+        }
+        
+        // For other URLs, try to extract image URL from common patterns
+        // This could be expanded to handle more services like Pinterest, Instagram, etc.
+        
+        return $url; // Return original URL if no extraction pattern matches
+    }
+
+    /**
+     * Progressive Data Submission - Save product details (image and category)
+     */
+    public function saveProductDetails(Request $request, string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+
+            $validator = Validator::make($request->all(), [
+                'image_url' => 'nullable|url|max:2048',
+                'image_path' => 'nullable|string|max:500',
+                'category_id' => 'nullable|exists:categories,id',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Update product with image and category data
+            $updateData = [];
+            
+            if ($request->has('image_url')) {
+                $updateData['image_url'] = $request->image_url;
+            }
+            
+            if ($request->has('image_path')) {
+                $updateData['image_path'] = $request->image_path;
+            }
+            
+            if ($request->has('category_id')) {
+                $updateData['category_id'] = $request->category_id;
+            }
+
+            // Update creation step if this is the first time setting product details
+            if ($product->creation_step === 'name_created') {
+                $updateData['creation_step'] = 'details_configured';
+            }
+
+            $product->update($updateData);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Product details saved successfully',
+                'data' => $product->fresh()->load('category')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error saving product details: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save product details'
             ], 500);
         }
     }

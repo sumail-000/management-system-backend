@@ -55,11 +55,31 @@ class CategoryController extends Controller
         try {
             $user = Auth::user();
             
-            $validator = Validator::make($request->all(), 
+            Log::info('Category creation request received', [
+                'user_id' => $user ? $user->id : 'null',
+                'request_data' => $request->all(),
+                'user_authenticated' => Auth::check(),
+            ]);
+            
+            if (!$user) {
+                Log::error('No authenticated user found for category creation');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
+            
+            $validator = Validator::make($request->all(),
                 Category::validationRules($user->id)
             );
 
             if ($validator->fails()) {
+                Log::error('Category validation failed', [
+                    'user_id' => $user->id,
+                    'request_data' => $request->all(),
+                    'validation_errors' => $validator->errors()->toArray()
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
@@ -72,13 +92,23 @@ class CategoryController extends Controller
                 'user_id' => $user->id
             ]);
 
+            Log::info('Category created successfully', [
+                'category_id' => $category->id,
+                'category_name' => $category->name,
+                'user_id' => $user->id
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $category,
                 'message' => 'Category created successfully'
             ], 201);
         } catch (\Exception $e) {
-            Log::error('Error creating category: ' . $e->getMessage());
+            Log::error('Error creating category: ' . $e->getMessage(), [
+                'exception' => $e,
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create category'

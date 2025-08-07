@@ -99,6 +99,7 @@ Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
 Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(function () {
     // Progressive Recipe Creation Routes (must come before apiResource)
     Route::prefix('products/{id}')->group(function () {
+        Route::post('/details', [ProductController::class, 'saveProductDetails']);
         Route::post('/ingredients', [ProductController::class, 'addIngredients']);
         Route::post('/nutrition', [ProductController::class, 'saveNutritionData']);
         Route::post('/serving', [ProductController::class, 'configureServing']);

@@ -168,26 +168,20 @@ class Product extends Model
 
 
     /**
-     * Get the full image URL for the product
-     */
-    public function getImageUrlAttribute(): ?string
-    {
-        if (isset($this->attributes['image_url']) && $this->attributes['image_url']) {
-            return $this->attributes['image_url'];
-        }
-        
-        if ($this->image_path) {
-            return asset('storage/' . $this->image_path);
-        }
-        
-        return null;
-    }
-
-    /**
      * Get the image URL (accessor for API responses)
      */
     public function getImageAttribute(): ?string
     {
-        return $this->getImageUrlAttribute();
+        // Check if we have a direct image URL
+        if (isset($this->attributes['image_url']) && $this->attributes['image_url']) {
+            return $this->attributes['image_url'];
+        }
+        
+        // Check if we have a local image path
+        if (isset($this->attributes['image_path']) && $this->attributes['image_path']) {
+            return asset('storage/' . $this->attributes['image_path']);
+        }
+        
+        return null;
     }
 }
