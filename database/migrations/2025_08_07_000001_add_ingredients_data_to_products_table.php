@@ -18,14 +18,16 @@ return new class extends Migration
             // Add fields for progressive recipe creation
             $table->json('nutrition_data')->nullable()->after('ingredients_data');
             $table->json('serving_configuration')->nullable()->after('nutrition_data');
-            $table->decimal('total_weight', 10, 2)->nullable()->after('serving_configuration');
+            $table->json('ingredient_statements')->nullable()->after('serving_configuration');
+            $table->decimal('total_weight', 10, 2)->nullable()->after('ingredient_statements');
             $table->integer('servings_per_container')->default(1)->after('total_weight');
             $table->decimal('serving_size_grams', 8, 2)->nullable()->after('servings_per_container');
             
             // Add recipe creation progress tracking
             $table->enum('creation_step', [
                 'name_created',
-                'ingredients_added', 
+                'details_configured',
+                'ingredients_added',
                 'nutrition_analyzed',
                 'serving_configured',
                 'completed'
@@ -48,6 +50,7 @@ return new class extends Migration
                 'ingredients_data',
                 'nutrition_data',
                 'serving_configuration',
+                'ingredient_statements',
                 'total_weight',
                 'servings_per_container',
                 'serving_size_grams',

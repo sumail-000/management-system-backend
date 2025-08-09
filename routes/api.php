@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\IngredientController;
+use App\Http\Controllers\Api\CustomIngredientController;
 use App\Http\Controllers\Api\MembershipPlanController;
 use App\Http\Controllers\Api\UsageController;
 use App\Http\Controllers\Api\StripePaymentController;
@@ -83,7 +84,7 @@ Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
         Route::post('/auto-renew', [StripePaymentController::class, 'updateAutoRenew']);
         Route::get('/subscription', [StripePaymentController::class, 'getSubscriptionDetails']);
         Route::post('/update-method', [StripePaymentController::class, 'updatePaymentMethod']);
-
+    });
 });
 
 
@@ -100,9 +101,13 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
     // Progressive Recipe Creation Routes (must come before apiResource)
     Route::prefix('products/{id}')->group(function () {
         Route::post('/details', [ProductController::class, 'saveProductDetails']);
+        Route::post('/upload-image', [ProductController::class, 'uploadImage']);
         Route::post('/ingredients', [ProductController::class, 'addIngredients']);
+        Route::post('/clear-ingredients', [ProductController::class, 'clearIngredients']);
         Route::post('/nutrition', [ProductController::class, 'saveNutritionData']);
         Route::post('/serving', [ProductController::class, 'configureServing']);
+        Route::post('/ingredient-statements', [ProductController::class, 'saveIngredientStatements']);
+        Route::post('/allergens', [ProductController::class, 'saveAllergens']);
         Route::post('/complete', [ProductController::class, 'completeRecipe']);
         Route::get('/progress', [ProductController::class, 'getProgress']);
         
@@ -124,6 +129,7 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
     Route::get('/products/tags/list', [ProductController::class, 'getTags']);
     Route::get('/products/{id}/tags', [ProductController::class, 'getProductTags']);
     Route::get('/products/trashed/list', [ProductController::class, 'trashed']);
+    Route::post('/products/bulk-delete', [ProductController::class, 'bulkDelete']);
     Route::patch('/products/{id}/restore', [ProductController::class, 'restore']);
     Route::delete('/products/{id}/force-delete', [ProductController::class, 'forceDelete']);
     
@@ -197,11 +203,18 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
         Route::post('/build-ingredient-string', [NutritionController::class, 'buildIngredientString']);
     });
     
-    // Other protected routes will be added here
-});
-
-
+    // Custom Ingredients Management
+    Route::prefix('custom-ingredients')->group(function () {
+        Route::get('/', [CustomIngredientController::class, 'index']);
+        Route::post('/', [CustomIngredientController::class, 'store']);
+        Route::get('/search', [CustomIngredientController::class, 'search']);
+        Route::get('/categories', [CustomIngredientController::class, 'getCategories']);
+        Route::get('/{id}', [CustomIngredientController::class, 'show']);
+        Route::put('/{id}', [CustomIngredientController::class, 'update']);
+        Route::delete('/{id}', [CustomIngredientController::class, 'destroy']);
+    });
     
+    // Other protected routes will be added here
 });
 
 

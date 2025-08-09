@@ -371,6 +371,168 @@ class ProductController extends Controller
     }
 
     /**
+     * Progressive Data Submission - Save ingredient statements
+     */
+    public function saveIngredientStatements(Request $request, string $id): JsonResponse
+    {
+        try {
+            Log::info('Saving ingredient statements', [
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
+
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+            
+            Log::info('Product found', [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'current_ingredient_statements' => $product->ingredient_statements
+            ]);
+
+            $validator = Validator::make($request->all(), [
+                'ingredient_statements' => 'required|array',
+                'ingredient_statements.*' => 'nullable|string|max:1000',
+            ]);
+
+            if ($validator->fails()) {
+                Log::error('Validation failed for ingredient statements', [
+                    'errors' => $validator->errors()->toArray(),
+                    'request_data' => $request->all()
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            Log::info('Validation passed, updating product', [
+                'ingredient_statements' => $request->ingredient_statements
+            ]);
+
+            // Update product with ingredient statements
+            $updateResult = $product->update([
+                'ingredient_statements' => $request->ingredient_statements,
+            ]);
+
+            Log::info('Update result', [
+                'update_successful' => $updateResult,
+                'updated_statements' => $product->fresh()->ingredient_statements
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ingredient statements saved successfully',
+                'data' => $product->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error saving ingredient statements', [
+                'error_message' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString(),
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save ingredient statements: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save allergens data for a product
+     */
+    public function saveAllergens(Request $request, $id)
+    {
+        try {
+            Log::info('Saving allergens data', [
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'request_data' => $request->all()
+            ]);
+
+            $product = Product::where('id', $id)
+                ->where('user_id', Auth::id())
+                ->firstOrFail();
+
+            // Validate the allergens data structure
+            $validated = $request->validate([
+                'detected' => 'array',
+                'detected.*.name' => 'required|string',
+                'detected.*.source' => 'required|string|in:cautions,healthLabels,ingredients',
+                'detected.*.confidence' => 'required|string|in:high,medium,low',
+                'detected.*.details' => 'nullable|string',
+                'manual' => 'array',
+                'manual.*.category' => 'required|string',
+                'manual.*.subcategory' => 'nullable|string',
+                'manual.*.name' => 'required|string',
+                'manual.*.customName' => 'nullable|string',
+                'statement' => 'nullable|string',
+                'displayOnLabel' => 'boolean'
+            ]);
+
+            // Save allergens data
+            $product->allergens_data = $validated;
+            $product->save();
+
+            Log::info('Allergens data saved successfully', [
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'detected_count' => count($validated['detected'] ?? []),
+                'manual_count' => count($validated['manual'] ?? [])
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Allergens data saved successfully',
+                'data' => [
+                    'allergens_data' => $product->allergens_data
+                ]
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation failed for allergens data', [
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'errors' => $e->errors()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::warning('Product not found for allergens save', [
+                'product_id' => $id,
+                'user_id' => Auth::id()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Product not found'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Error saving allergens data', [
+                'product_id' => $id,
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save allergens data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Progressive Data Submission - Step 5: Complete recipe creation
      */
     public function completeRecipe(Request $request, string $id): JsonResponse
@@ -378,24 +540,57 @@ class ProductController extends Controller
         try {
             $product = Product::where('user_id', Auth::id())->findOrFail($id);
 
-            // Validate that all required steps are completed
-            if (!$product->ingredients_data || !$product->nutrition_data || !$product->serving_configuration) {
+            // Validate that essential required steps are completed
+            if (!$product->ingredients_data || !$product->nutrition_data) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Recipe is not ready to be completed. Missing required data.',
                     'missing_data' => [
                         'ingredients' => !$product->ingredients_data,
                         'nutrition' => !$product->nutrition_data,
-                        'serving_config' => !$product->serving_configuration,
                     ]
                 ], 400);
             }
 
-            // Update product status
-            $product->update([
+            // Create default serving configuration if not present
+            if (!$product->serving_configuration) {
+                $defaultServingConfig = [
+                    'mode' => 'serving',
+                    'servings_per_container' => $product->servings_per_container ?? 1,
+                    'serving_size_grams' => $product->serving_size_grams ?? ($product->total_weight ?? 100),
+                ];
+                
+                $product->update([
+                    'serving_configuration' => $defaultServingConfig,
+                    'servings_per_container' => $defaultServingConfig['servings_per_container'],
+                    'serving_size_grams' => $defaultServingConfig['serving_size_grams'],
+                    'creation_step' => 'serving_configured',
+                    'serving_updated_at' => now(),
+                ]);
+                
+                Log::info('Created default serving configuration for product completion', [
+                    'product_id' => $id,
+                    'serving_config' => $defaultServingConfig
+                ]);
+            }
+
+            // Update product status and publication settings
+            $updateData = [
                 'creation_step' => 'completed',
-                'status' => $request->get('publish', false) ? 'published' : 'draft',
-            ]);
+                'status' => $request->get('status', 'draft'),
+            ];
+
+            // Handle publication settings
+            if ($request->has('is_public')) {
+                $updateData['is_public'] = $request->get('is_public', false);
+            }
+
+            // Backward compatibility with 'publish' parameter
+            if ($request->get('publish', false)) {
+                $updateData['status'] = 'published';
+            }
+
+            $product->update($updateData);
 
             return response()->json([
                 'success' => true,
@@ -664,12 +859,18 @@ class ProductController extends Controller
             $product = Product::where('user_id', Auth::id())->findOrFail($id);
 
             $validator = Validator::make($request->all(), [
-                'image_url' => 'nullable|url|max:2048',
+                'image_url' => 'nullable|string|max:4096', // Increased limit and changed from url to string for flexibility
                 'image_path' => 'nullable|string|max:500',
                 'category_id' => 'nullable|exists:categories,id',
             ]);
 
             if ($validator->fails()) {
+                Log::error('Product details validation failed', [
+                    'product_id' => $id,
+                    'request_data' => $request->all(),
+                    'validation_errors' => $validator->errors()->toArray()
+                ]);
+                
                 return response()->json([
                     'success' => false,
                     'message' => 'Validation failed',
@@ -680,15 +881,15 @@ class ProductController extends Controller
             // Update product with image and category data
             $updateData = [];
             
-            if ($request->has('image_url')) {
+            if ($request->has('image_url') && $request->image_url !== null) {
                 $updateData['image_url'] = $request->image_url;
             }
             
-            if ($request->has('image_path')) {
+            if ($request->has('image_path') && $request->image_path !== null) {
                 $updateData['image_path'] = $request->image_path;
             }
             
-            if ($request->has('category_id')) {
+            if ($request->has('category_id') && $request->category_id !== null) {
                 $updateData['category_id'] = $request->category_id;
             }
 
@@ -697,7 +898,10 @@ class ProductController extends Controller
                 $updateData['creation_step'] = 'details_configured';
             }
 
-            $product->update($updateData);
+            // Only update if there's data to update
+            if (!empty($updateData)) {
+                $product->update($updateData);
+            }
 
             return response()->json([
                 'success' => true,
@@ -706,10 +910,471 @@ class ProductController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error saving product details: ' . $e->getMessage());
+            Log::error('Error saving product details', [
+                'product_id' => $id,
+                'error_message' => $e->getMessage(),
+                'error_trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save product details'
+                'message' => 'Failed to save product details: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Toggle product favorite status
+     */
+    public function toggleFavorite(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+            
+            $product->update([
+                'is_favorite' => !$product->is_favorite
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => $product->is_favorite ? 'Product added to favorites' : 'Product removed from favorites',
+                'data' => [
+                    'is_favorite' => $product->is_favorite
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error toggling product favorite: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to toggle favorite status'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Toggle product pin status
+     */
+    public function togglePin(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+            
+            $product->update([
+                'is_pinned' => !$product->is_pinned
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => $product->is_pinned ? 'Product pinned' : 'Product unpinned',
+                'data' => [
+                    'is_pinned' => $product->is_pinned
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error toggling product pin: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to toggle pin status'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Duplicate a product
+     */
+    public function duplicate(string $id): JsonResponse
+    {
+        try {
+            $originalProduct = Product::where('user_id', Auth::id())->findOrFail($id);
+            
+            // Create a new product with the same data
+            $newProduct = $originalProduct->replicate();
+            $newProduct->name = $originalProduct->name . ' (Copy)';
+            $newProduct->creation_step = $originalProduct->creation_step;
+            $newProduct->status = 'draft';
+            $newProduct->is_pinned = false;
+            $newProduct->is_favorite = false;
+            $newProduct->created_at = now();
+            $newProduct->updated_at = now();
+            $newProduct->save();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Product duplicated successfully',
+                'data' => $newProduct->load('category')
+            ], 201);
+            
+        } catch (\Exception $e) {
+            Log::error('Error duplicating product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to duplicate product'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get trashed products
+     */
+    public function trashed(Request $request): JsonResponse
+    {
+        try {
+            $query = Product::where('user_id', Auth::id())
+                ->onlyTrashed()
+                ->with(['category']);
+            
+            // Apply search
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('description', 'like', "%{$search}%");
+                });
+            }
+            
+            // Apply sorting
+            $sortBy = $request->get('sort_by', 'deleted_at');
+            $sortOrder = $request->get('sort_order', 'desc');
+            $query->orderBy($sortBy, $sortOrder);
+            
+            // Paginate results
+            $perPage = $request->get('per_page', 15);
+            $products = $query->paginate($perPage);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $products->items(),
+                'pagination' => [
+                    'current_page' => $products->currentPage(),
+                    'last_page' => $products->lastPage(),
+                    'per_page' => $products->perPage(),
+                    'total' => $products->total(),
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching trashed products: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch trashed products'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Restore a trashed product
+     */
+    public function restore(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->onlyTrashed()->findOrFail($id);
+            $product->restore();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Product restored successfully',
+                'data' => $product->load('category')
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error restoring product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to restore product'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Permanently delete a trashed product
+     */
+    public function forceDelete(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->onlyTrashed()->findOrFail($id);
+            $product->forceDelete();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Product permanently deleted'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error permanently deleting product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to permanently delete product'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get all categories for the authenticated user
+     */
+    public function getCategories(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            $categories = Category::forUser($user->id)
+                ->withCount('products')
+                ->orderBy('name')
+                ->get(['id', 'name', 'created_at']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $categories,
+                'message' => 'Categories retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching categories: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve categories'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get tags for a specific product
+     */
+    public function getProductTags(string $id): JsonResponse
+    {
+        try {
+            Log::info("Getting product tags for product ID: {$id}");
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+            
+            Log::info("Product found: {$product->name}");
+            Log::info("Product nutrition_data exists: " . (!empty($product->nutrition_data) ? 'YES' : 'NO'));
+            Log::info("Product nutrition_data content: " . json_encode($product->nutrition_data));
+            
+            // Extract health labels from nutrition data
+            $healthLabels = [];
+            if (!empty($product->nutrition_data) && isset($product->nutrition_data['health_labels'])) {
+                $healthLabels = $product->nutrition_data['health_labels'];
+                Log::info("Health labels found: " . json_encode($healthLabels));
+            } else {
+                Log::info("No health labels found in nutrition_data");
+            }
+            
+            // Extract diet labels from nutrition data
+            $dietLabels = [];
+            if (!empty($product->nutrition_data) && isset($product->nutrition_data['diet_labels'])) {
+                $dietLabels = $product->nutrition_data['diet_labels'];
+                Log::info("Diet labels found: " . json_encode($dietLabels));
+            } else {
+                Log::info("No diet labels found in nutrition_data");
+            }
+            
+            // Combine health labels and diet labels
+            $tags = array_merge($healthLabels, $dietLabels);
+            
+            // Remove duplicates and return
+            $uniqueTags = array_unique($tags);
+            
+            Log::info("Final unique tags for product {$product->name}: " . json_encode($uniqueTags));
+            
+            return response()->json([
+                'success' => true,
+                'data' => array_values($uniqueTags), // Ensure it's a proper array
+                'message' => 'Product tags retrieved successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching product tags: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to retrieve product tags'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Get favorite products
+     */
+    public function getFavorites(Request $request): JsonResponse
+    {
+        try {
+            $query = Product::where('user_id', Auth::id())
+                ->where('is_favorite', true)
+                ->with(['category']);
+
+            // Apply search
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('description', 'like', "%{$search}%");
+                });
+            }
+
+            // Apply category filter
+            if ($request->has('category')) {
+                $query->where('category_id', $request->category);
+            }
+
+            // Apply sorting
+            $sortBy = $request->get('sort_by', 'updated_at');
+            $sortOrder = $request->get('sort_order', 'desc');
+            $query->orderBy($sortBy, $sortOrder);
+
+            // Paginate results
+            $perPage = $request->get('per_page', 15);
+            $products = $query->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => $products->items(),
+                'pagination' => [
+                    'current_page' => $products->currentPage(),
+                    'last_page' => $products->lastPage(),
+                    'per_page' => $products->perPage(),
+                    'total' => $products->total(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching favorite products: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch favorite products'
+            ], 500);
+        }
+    
+    }
+
+    /**
+     * Upload image file for a product
+     */
+    public function uploadImage(Request $request, $id)
+    {
+        try {
+            $product = Product::where('user_id', auth()->id())->findOrFail($id);
+
+            $request->validate([
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120', // 5MB max
+            ]);
+
+            if ($request->hasFile('image')) {
+                $image = $request->file('image');
+                $filename = time() . '_' . $image->getClientOriginalName();
+                
+                // Store in public/storage/images directory
+                $path = $image->storeAs('images', $filename, 'public');
+                
+                // Update product with image path
+                $product->update([
+                    'image_path' => $path,
+                    'image_url' => null // Clear URL if file is uploaded
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Image uploaded successfully',
+                    'data' => [
+                        'image_path' => $path,
+                        'image_url' => asset('storage/' . $path)
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No image file provided'
+            ], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Image upload failed', [
+                'product_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to upload image: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    /**
+     * Bulk delete products
+     */
+    public function bulkDelete(Request $request): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'ids' => 'required|array|min:1',
+                'ids.*' => 'required|exists:products,id,user_id,' . Auth::id(),
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $ids = $request->input('ids');
+            
+            // Soft delete all specified products
+            Product::where('user_id', Auth::id())
+                ->whereIn('id', $ids)
+                ->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => count($ids) . ' product(s) deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error bulk deleting products: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete products'
+            ], 500);
+        }
+    }
+
+    /**
+     * Clear all ingredients and nutrition data from a product
+     */
+    public function clearIngredients(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('user_id', Auth::id())->findOrFail($id);
+
+            // Clear all ingredient and nutrition related data
+            $product->update([
+                'ingredients_data' => [],
+                'total_weight' => 0,
+                'nutrition_data' => null,
+                'servings_per_container' => 1,
+                'serving_configuration' => null,
+                'creation_step' => 'name_created', // Reset to initial step
+                'ingredients_updated_at' => now(),
+                'nutrition_updated_at' => null,
+                'serving_updated_at' => null,
+            ]);
+
+            Log::info('All ingredients and nutrition data cleared for product', [
+                'product_id' => $id,
+                'user_id' => Auth::id()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'All ingredients and nutrition data cleared successfully',
+                'data' => $product->fresh()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error clearing ingredients: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to clear ingredients'
             ], 500);
         }
     }
