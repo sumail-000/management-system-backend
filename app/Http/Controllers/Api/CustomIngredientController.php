@@ -322,4 +322,62 @@ class CustomIngredientController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get recipe usage information for a custom ingredient
+     */
+    public function getUsage(string $id): JsonResponse
+    {
+        try {
+            $ingredient = CustomIngredient::forUser(Auth::id())->findOrFail($id);
+            
+            // Get recipes that use this custom ingredient
+            // This would require checking the ingredients_data JSON field in products table
+            // For now, we'll return the usage_count from the ingredient itself
+            
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'ingredient_id' => $ingredient->id,
+                    'ingredient_name' => $ingredient->name,
+                    'usage_count' => $ingredient->usage_count ?? 0,
+                    'recipes' => [] // TODO: Implement recipe lookup
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching ingredient usage: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch ingredient usage'
+            ], 500);
+        }
+    }
+
+    /**
+     * Increment usage count when ingredient is used in a recipe
+     */
+    public function incrementUsage(string $id): JsonResponse
+    {
+        try {
+            $ingredient = CustomIngredient::forUser(Auth::id())->findOrFail($id);
+            $ingredient->incrementUsage();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Usage count incremented successfully',
+                'data' => [
+                    'ingredient_id' => $ingredient->id,
+                    'usage_count' => $ingredient->usage_count
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error incrementing ingredient usage: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to increment ingredient usage'
+            ], 500);
+        }
+    }
 }

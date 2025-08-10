@@ -214,6 +214,8 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
         Route::get('/{id}', [CustomIngredientController::class, 'show']);
         Route::put('/{id}', [CustomIngredientController::class, 'update']);
         Route::delete('/{id}', [CustomIngredientController::class, 'destroy']);
+        Route::get('/{id}/usage', [CustomIngredientController::class, 'getUsage']);
+        Route::post('/{id}/increment-usage', [CustomIngredientController::class, 'incrementUsage']);
     });
     // Other protected routes will be added here
 });
