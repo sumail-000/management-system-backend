@@ -1378,4 +1378,89 @@ class ProductController extends Controller
             ], 500);
         }
     }
+    /**
+     * Get all public products
+     */
+    public function public(Request $request): JsonResponse
+    {
+        try {
+            $query = Product::where('status', 'published')
+                ->where('is_public', true)
+                ->with(['category']);
+
+            // Apply search
+            if ($request->has('search')) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                      ->orWhere('description', 'like', "%{$search}%");
+                });
+            }
+
+            // Apply category filter
+            if ($request->has('category_id')) {
+                $query->where('category_id', $request->category_id);
+            }
+
+            // Apply sorting
+            $sortBy = $request->get('sort_by', 'updated_at');
+            $sortOrder = $request->get('sort_order', 'desc');
+            $query->orderBy($sortBy, $sortOrder);
+
+            // Paginate results
+            $perPage = $request->get('per_page', 15);
+            $products = $query->paginate($perPage);
+
+            return response()->json([
+                'success' => true,
+                'data' => $products->items(),
+                'pagination' => [
+                    'current_page' => $products->currentPage(),
+                    'last_page' => $products->lastPage(),
+                    'per_page' => $products->perPage(),
+                    'total' => $products->total(),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching public products: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch public products'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get a specific public product by ID
+     */
+    public function getPublicById(string $id): JsonResponse
+    {
+        try {
+            $product = Product::where('id', $id)
+                ->where('status', 'published')
+                ->where('is_public', true)
+                ->with(['category'])
+                ->first();
+
+            if (!$product) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Product not found or not public'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $product
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching public product: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch product'
+            ], 500);
+        }
+    }
 }
