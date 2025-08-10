@@ -31,12 +31,14 @@ use Illuminate\Support\Facades\Route;
 // Authentication Routes
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
-Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutFromAllDevices']);
     Route::post('/auth/change-password', [AuthController::class, 'changePassword']);
-    Route::delete('/auth/delete-account', [AuthController::class, 'deleteAccount']);
+    Route::post('/auth/request-account-deletion', [AuthController::class, 'requestAccountDeletion']);
+    Route::post('/auth/cancel-account-deletion', [AuthController::class, 'cancelAccountDeletion']);
+    Route::get('/auth/account-deletion-status', [AuthController::class, 'getAccountDeletionStatus']);
     Route::post('/auth/update-profile', [AuthController::class, 'updateProfile']);
 });
 
@@ -70,7 +72,7 @@ Route::post('/logs/frontend', [App\Http\Controllers\Api\LogController::class, 's
 Route::post('/logs/frontend/batch', [App\Http\Controllers\Api\LogController::class, 'storeBatchFrontendLogs']);
 
 // Payment Routes (require authentication)
-Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security'])->group(function () {
     Route::prefix('payment')->group(function () {
         Route::post('/create-intent', [StripePaymentController::class, 'createPaymentIntent']);
         Route::get('/status', [StripePaymentController::class, 'getPaymentStatus']);
@@ -90,14 +92,14 @@ Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
 
 
 // User-specific membership plan routes (require authentication)
-Route::middleware(['auth:sanctum', 'token.refresh'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security'])->group(function () {
     Route::get('/user/membership-plan', [MembershipPlanController::class, 'getCurrentPlan']);
     Route::get('/user/plan-recommendations', [MembershipPlanController::class, 'getRecommendations']);
     Route::post('/user/upgrade-plan', [MembershipPlanController::class, 'upgradePlan']);
 });
 
 // Protected Routes (require authentication and dashboard access)
-Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', 'dashboard.access'])->group(function () {
     // Progressive Recipe Creation Routes (must come before apiResource)
     Route::prefix('products/{id}')->group(function () {
         Route::post('/details', [ProductController::class, 'saveProductDetails']);
@@ -213,11 +215,35 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'dashboard.access'])->group(
         Route::put('/{id}', [CustomIngredientController::class, 'update']);
         Route::delete('/{id}', [CustomIngredientController::class, 'destroy']);
     });
-    
     // Other protected routes will be added here
 });
 
-
-
+// Admin Routes (require admin role and enhanced security)
+Route::prefix('admin')->middleware(['auth:sanctum', 'enhanced.token.security', 'admin.role.guard'])->group(function () {
+    // Admin Dashboard
+    Route::prefix('dashboard')->group(function () {
+        Route::get('/metrics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getMetrics']);
+        Route::get('/analytics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getAnalytics']);
+        Route::get('/system-health', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getSystemHealth']);
+    });
+    
+    // Admin Profile
+    Route::prefix('profile')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'show']);
+        Route::put('/', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'update']);
+        Route::post('/avatar', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'updateAvatar']);
+        Route::post('/password', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'updatePassword']);
+        Route::get('/permissions', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'getPermissions']);
+        Route::get('/activity', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'getRecentActivity']);
+        Route::post('/security-settings', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'updateSecuritySettings']);
+        Route::get('/current-ip', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'getCurrentIp']);
+    });
+    
+    // TODO: Add these controllers when they are implemented
+    // User Management - UserController not yet created
+    // System Analytics - AnalyticsController not yet created
+    // System Settings - SettingsController not yet created
+    // Security Logs - SecurityController not yet created
+});
 
 

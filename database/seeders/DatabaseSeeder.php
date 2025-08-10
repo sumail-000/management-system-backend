@@ -16,5 +16,8 @@ class DatabaseSeeder extends Seeder
     {
         // Run the membership plan seeder first
         $this->call(MembershipPlanSeeder::class);
+        
+        // Create admin user
+        $this->call(AdminUserSeeder::class);
     }
 }

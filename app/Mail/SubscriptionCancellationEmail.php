@@ -22,11 +22,11 @@ class SubscriptionCancellationEmail extends Mailable
     /**
      * Create a new message instance.
      */
-    public function __construct(User $user, $reason = null)
+    public function __construct(User $user, $plan = null, $reason = null)
     {
         $this->user = $user;
-        $this->plan = $user->membershipPlan;
-        $this->reason = $reason;
+        $this->plan = $plan ?: $user->membershipPlan;
+        $this->reason = $reason ?: 'Unknown reason';
         
         Log::info('Subscription cancellation email instance created', [
             'user_id' => $user->id,

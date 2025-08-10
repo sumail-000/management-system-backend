@@ -129,10 +129,7 @@
         
         <div class="last-chance">
             <h3 style="margin: 0 0 15px 0; color: #856404;">🛑 LAST CHANCE TO CANCEL</h3>
-            <p style="margin: 0; font-size: 16px;">If you want to keep your account, you must cancel the deletion request before the scheduled time.</p>
-            <div style="margin: 20px 0 0 0;">
-                <a href="{{ config('app.frontend_url') }}/account/delete/cancel" class="btn btn-success">CANCEL DELETION & KEEP ACCOUNT</a>
-            </div>
+            <p style="margin: 0; font-size: 16px;">If you want to keep your account, you can cancel the deletion request by logging into your account before the scheduled time.</p>
         </div>
         
         <h3>📊 Account Summary</h3>
@@ -146,33 +143,6 @@
             </ul>
         </div>
         
-        @if($dataExported)
-        <div class="success-box">
-            <h4 style="margin: 0 0 15px 0;">✅ Data Export Completed</h4>
-            <p style="margin: 0;">Your data has been successfully exported and is available for download until the deletion date.</p>
-            @if(!empty($exportedData))
-            <div class="data-summary">
-                <h5 style="margin: 0 0 10px 0;">Exported Data Summary:</h5>
-                <ul style="margin: 0; padding-left: 20px;">
-                    @foreach($exportedData as $type => $count)
-                    <li>{{ ucfirst($type) }}: {{ $count }} records</li>
-                    @endforeach
-                </ul>
-            </div>
-            @endif
-            <div style="text-align: center; margin: 15px 0 0 0;">
-                <a href="{{ config('app.frontend_url') }}/settings/export/download" class="btn btn-primary">Download Export</a>
-            </div>
-        </div>
-        @else
-        <div class="info-box">
-            <h4 style="margin: 0 0 15px 0; color: #0c5460;">💾 Last Chance to Export Your Data</h4>
-            <p style="margin: 0;">You still have time to export your data before deletion. This includes all your products, orders, and account information.</p>
-            <div style="text-align: center; margin: 15px 0 0 0;">
-                <a href="{{ config('app.frontend_url') }}/settings/export" class="btn btn-primary">Export Data Now</a>
-            </div>
-        </div>
-        @endif
         
         <h3>🗑️ What Will Be Deleted</h3>
         <div class="data-summary">
@@ -202,10 +172,7 @@
         <h3>🤔 Changed Your Mind?</h3>
         <p>If you're having second thoughts or if there's something we can do to improve your experience, we'd love to help. Our support team is standing by to assist you.</p>
         
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{ config('app.frontend_url') }}/account/delete/cancel" class="btn btn-success">KEEP MY ACCOUNT</a>
-            <a href="{{ config('app.frontend_url') }}/support" class="btn btn-primary">Contact Support</a>
-        </div>
+        <p>You can cancel this deletion by logging into your account before the scheduled time.</p>
         
         <h3>🔒 Security Notice</h3>
         <p>If you did not request this account deletion, please contact our security team immediately. This could indicate unauthorized access to your account.</p>

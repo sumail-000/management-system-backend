@@ -3,10 +3,17 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\ChangePasswordRequest;
+use App\Http\Requests\Auth\UpdateProfileRequest;
+use App\Http\Requests\Auth\PasswordResetRequest;
 use App\Models\User;
+use App\Models\Admin;
 use App\Models\MembershipPlan;
 use App\Models\PasswordResetOtp;
 use App\Services\UsageTrackingService;
+use App\Services\EmailService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
@@ -16,6 +23,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use App\Mail\PasswordResetOtpMail;
+use App\Mail\AdminLoginNotification;
+use App\Models\AdminActivity;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Str;
@@ -26,15 +35,17 @@ use Carbon\Carbon;
 class AuthController extends Controller
 {
     protected $usageService;
+    protected $emailService;
     
-    public function __construct(UsageTrackingService $usageService)
+    public function __construct(UsageTrackingService $usageService, EmailService $emailService)
     {
         $this->usageService = $usageService;
+        $this->emailService = $emailService;
     }
     /**
      * Register a new user
      */
-    public function register(Request $request)
+    public function register(RegisterRequest $request)
     {
         Log::channel('auth')->info('User registration attempt', [
             'email' => $request->email,
@@ -42,23 +53,8 @@ class AuthController extends Controller
             'user_agent' => $request->userAgent()
         ]);
 
-        try {
-            $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|string|email|max:255|unique:users',
-                'password' => 'required|string|min:8|confirmed',
-                'company' => 'nullable|string|max:255',
-                'contact_number' => 'nullable|string|max:20',
-                'tax_id' => 'nullable|string|max:50',
-            ]);
-        } catch (ValidationException $e) {
-            Log::channel('auth')->warning('User registration validation failed', [
-                'email' => $request->email,
-                'errors' => $e->errors(),
-                'ip_address' => $request->ip()
-            ]);
-            throw $e;
-        }
+        // Validation is handled by RegisterRequest
+        $validated = $request->validated();
 
         // Get the Basic membership plan (default for new users)
         $basicPlan = MembershipPlan::where('name', 'Basic')->first();
@@ -78,7 +74,6 @@ class AuthController extends Controller
                 'name' => $request->name,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
-                'role' => 'user',
                 'membership_plan_id' => $selectedPlan?->id,
                 'company' => $request->company,
                 'contact_number' => $request->contact_number,
@@ -157,6 +152,21 @@ class AuthController extends Controller
                 'requires_payment' => !$user->canAccessDashboard()
             ]);
             
+            // Send welcome email
+            try {
+                $this->emailService->sendWelcomeEmail($user);
+                Log::channel('auth')->info('Welcome email sent successfully', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            } catch (\Exception $e) {
+                Log::channel('auth')->error('Failed to send welcome email', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
             return response()->json($responseData, Response::HTTP_CREATED);
         } catch (\Exception $e) {
             Log::channel('auth')->error('User registration failed', [
@@ -171,24 +181,139 @@ class AuthController extends Controller
     /**
      * Login user
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
 
 
-        try {
-            $request->validate([
-                'email' => 'required|email',
-                'password' => 'required',
+        // Validation and rate limiting handled by LoginRequest
+        $validated = $request->validated();
+
+        // First try to authenticate as admin
+        $admin = Admin::where('email', $request->email)->first();
+        if ($admin && Hash::check($request->password, $admin->password)) {
+            if (!$admin->is_active) {
+                Log::channel('auth')->warning('Admin login failed - account inactive', [
+                    'admin_id' => $admin->id,
+                    'email' => $admin->email,
+                    'ip_address' => $request->ip()
+                ]);
+                
+                // Log activity and send login notification for failed attempt (inactive account)
+                $admin->logActivity(
+                    AdminActivity::ACTION_LOGIN_FAILED,
+                    'Login failed - account is deactivated',
+                    AdminActivity::TYPE_LOGIN,
+                    ['reason' => 'Account is deactivated'],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+                $this->sendAdminLoginNotification($admin, 'failed', $request, 'Account is deactivated');
+                
+                throw ValidationException::withMessages([
+                    'email' => ['Your admin account has been deactivated.'],
+                ]);
+            }
+            
+            // Check IP restriction during login
+            $clientIp = $request->ip();
+            if (!$admin->isIpAllowed($clientIp)) {
+                Log::channel('security')->warning('Admin login blocked due to IP restriction', [
+                    'admin_id' => $admin->id,
+                    'admin_email' => $admin->email,
+                    'client_ip' => $clientIp,
+                    'allowed_ips' => $admin->allowed_ips,
+                    'user_agent' => $request->userAgent(),
+                    'timestamp' => now()->toISOString()
+                ]);
+                
+                // Log activity and send login notification for blocked attempt
+                $admin->logActivity(
+                    AdminActivity::ACTION_LOGIN_BLOCKED,
+                    'Login blocked due to IP restriction',
+                    AdminActivity::TYPE_SECURITY,
+                    [
+                        'client_ip' => $clientIp,
+                        'allowed_ips' => $admin->allowed_ips,
+                        'reason' => 'IP address not authorized'
+                    ],
+                    $request->ip(),
+                    $request->userAgent()
+                );
+                $this->sendAdminLoginNotification($admin, 'blocked', $request, 'IP address not authorized');
+                
+                return response()->json([
+                    'message' => 'Access denied. Your IP address is not authorized to access the admin panel.',
+                    'error_code' => 'IP_RESTRICTION_VIOLATION',
+                    'client_ip' => $clientIp
+                ], 403);
+            }
+            
+            // Update last login info
+            $admin->updateLastLogin($request->ip());
+            
+            // Create token for admin
+            $tokenResult = $admin->createToken('admin_auth_token');
+            $token = $tokenResult->plainTextToken;
+            
+            // Set token expiration
+            $tokenResult->accessToken->update([
+                'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))
             ]);
-        } catch (ValidationException $e) {
-            Log::channel('auth')->warning('Login validation failed', [
-                'email' => $request->email,
-                'errors' => $e->errors(),
+            
+            Log::channel('auth')->info('Admin login successful', [
+                'admin_id' => $admin->id,
+                'email' => $admin->email,
+                'role' => $admin->role,
                 'ip_address' => $request->ip()
             ]);
-            throw $e;
+            
+            // Log activity and send login notification for successful attempt
+            $admin->logActivity(
+                AdminActivity::ACTION_LOGIN_SUCCESS,
+                'Successful admin login',
+                AdminActivity::TYPE_LOGIN,
+                [
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent()
+                ],
+                $request->ip(),
+                $request->userAgent()
+            );
+            $this->sendAdminLoginNotification($admin, 'success', $request);
+            
+            return response()->json([
+                'message' => 'Admin login successful',
+                'user_type' => 'admin',
+                'admin' => $admin,
+                'access_token' => $token,
+                'token_type' => 'Bearer',
+                'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
+                'expires_in' => (int) config('sanctum.expiration', 1440) * 60,
+                'redirect_to' => '/admin-panel',
+            ]);
         }
 
+        // Check if admin exists but password is wrong
+        if ($admin) {
+            Log::channel('auth')->warning('Admin login failed - invalid password', [
+                'admin_id' => $admin->id,
+                'email' => $admin->email,
+                'ip_address' => $request->ip()
+            ]);
+            
+            // Log activity and send login notification for failed attempt (wrong password)
+            $admin->logActivity(
+                AdminActivity::ACTION_LOGIN_FAILED,
+                'Login failed - invalid password',
+                AdminActivity::TYPE_LOGIN,
+                ['reason' => 'Invalid password'],
+                $request->ip(),
+                $request->userAgent()
+            );
+            $this->sendAdminLoginNotification($admin, 'failed', $request, 'Invalid password');
+        }
+
+        // If not admin, try regular user authentication
         if (!Auth::attempt($request->only('email', 'password'))) {
             Log::channel('auth')->warning('Login failed - invalid credentials', [
                 'email' => $request->email,
@@ -204,7 +329,27 @@ class AuthController extends Controller
         /** @var \App\Models\User $user */
         $user = Auth::user();
         
-
+        // Check if user has a scheduled account deletion and cancel it automatically
+        if ($user->deletion_scheduled_at && $user->deletion_scheduled_at->isFuture()) {
+            Log::channel('auth')->info('User logged in during deletion waiting period - cancelling scheduled deletion', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'deletion_was_scheduled_at' => $user->deletion_scheduled_at,
+                'hours_remaining' => now()->diffInHours($user->deletion_scheduled_at)
+            ]);
+            
+            // Cancel the scheduled deletion
+            $user->update([
+                'deletion_scheduled_at' => null,
+                'deletion_reason' => null
+            ]);
+            
+            Log::channel('auth')->info('Scheduled account deletion cancelled automatically due to user login', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'cancelled_at' => now()
+            ]);
+        }
         
         // Laravel Sanctum's HasApiTokens trait provides createToken method
         $tokenResult = $user->createToken('auth_token');
@@ -215,8 +360,8 @@ class AuthController extends Controller
             'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))
         ]);
         
-
-
+        $deletionCancelled = false;
+        
         // Check if trial has expired and update status
         if ($user->isTrialExpired()) {
             $user->update(['payment_status' => 'expired']);
@@ -224,6 +369,11 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'trial_ended_at' => $user->trial_ends_at
             ]);
+        }
+        
+        // Check if deletion was cancelled during login
+        if ($user->wasChanged(['deletion_scheduled_at', 'deletion_reason'])) {
+            $deletionCancelled = true;
         }
         
         // Get user usage data
@@ -235,6 +385,7 @@ class AuthController extends Controller
         
         $responseData = [
             'message' => 'Login successful',
+            'user_type' => 'user',
             'user' => $user->load('membershipPlan'),
             'usage' => $usage,
             'usage_percentages' => $percentages,
@@ -247,6 +398,12 @@ class AuthController extends Controller
             'requires_payment' => !$user->canAccessDashboard(),
             'subscription_info' => $subscriptionInfo,
         ];
+        
+        // Add deletion cancellation notice if applicable
+        if ($deletionCancelled) {
+            $responseData['account_deletion_cancelled'] = true;
+            $responseData['message'] = 'Login successful. Your scheduled account deletion has been cancelled.';
+        }
         
         // Add trial info if user is on trial
         if ($user->isOnTrial()) {
@@ -284,7 +441,27 @@ class AuthController extends Controller
     {
         $user = $request->user();
         
-
+        // Check if user has a scheduled account deletion and cancel it automatically
+        if ($user->deletion_scheduled_at && $user->deletion_scheduled_at->isFuture()) {
+            Log::channel('auth')->info('User accessed profile during deletion waiting period - cancelling scheduled deletion', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'deletion_was_scheduled_at' => $user->deletion_scheduled_at,
+                'hours_remaining' => now()->diffInHours($user->deletion_scheduled_at)
+            ]);
+            
+            // Cancel the scheduled deletion
+            $user->update([
+                'deletion_scheduled_at' => null,
+                'deletion_reason' => null
+            ]);
+            
+            Log::channel('auth')->info('Scheduled account deletion cancelled automatically due to user profile access', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'cancelled_at' => now()
+            ]);
+        }
 
         // Check if trial has expired and update status
         if ($user->isTrialExpired()) {
@@ -313,6 +490,7 @@ class AuthController extends Controller
             'billing_information' => $user->billingInformation,
             'payment_methods' => $user->activePaymentMethods,
             'billing_history' => $user->billingHistory()->with(['membershipPlan', 'paymentMethod'])->orderBy('billing_date', 'desc')->limit(10)->get(),
+            'deletion_info' => $user->getDeletionInfo(),
         ];
         
         // Add trial info if user is on trial
@@ -492,7 +670,7 @@ class AuthController extends Controller
     /**
      * Reset password with OTP
      */
-    public function resetPassword(Request $request)
+    public function resetPassword(PasswordResetRequest $request)
     {
         Log::channel('auth')->info('Password reset attempt', [
             'email' => $request->email,
@@ -500,20 +678,8 @@ class AuthController extends Controller
             'user_agent' => $request->userAgent()
         ]);
 
-        try {
-            $request->validate([
-                'otp' => 'required|string|size:6',
-                'email' => 'required|email',
-                'password' => 'required|min:8|confirmed',
-            ]);
-        } catch (ValidationException $e) {
-            Log::channel('auth')->warning('Password reset validation failed', [
-                'email' => $request->email,
-                'errors' => $e->errors(),
-                'ip_address' => $request->ip()
-            ]);
-            throw $e;
-        }
+        // Validation and rate limiting handled by PasswordResetRequest
+        $validated = $request->validated();
 
         // Check if there's a recently used OTP for this email (within last 5 minutes)
         $recentlyUsedOtp = PasswordResetOtp::where('email', $request->email)
@@ -561,7 +727,7 @@ class AuthController extends Controller
             
             // Update password
             $user->forceFill([
-                'password' => Hash::make($request->password)
+                'password' => Hash::make($validated['password'])
             ])->setRememberToken(Str::random(60));
 
             $user->save();
@@ -697,7 +863,7 @@ class AuthController extends Controller
     /**
      * Change user password
      */
-    public function changePassword(Request $request)
+    public function changePassword(ChangePasswordRequest $request)
     {
         try {
             $user = $request->user();
@@ -708,28 +874,28 @@ class AuthController extends Controller
                 'ip_address' => $request->ip()
             ]);
             
-            $request->validate([
-                'current_password' => 'required',
-                'new_password' => 'required|min:8|confirmed',
-            ]);
-            
-            // Verify current password
-            if (!Hash::check($request->current_password, $user->password)) {
-                Log::channel('auth')->warning('Password change failed - incorrect current password', [
-                    'user_id' => $user->id,
-                    'email' => $user->email,
-                    'ip_address' => $request->ip()
-                ]);
-                
-                throw ValidationException::withMessages([
-                    'current_password' => ['The current password is incorrect.'],
-                ]);
-            }
+            // Validation and current password verification handled by ChangePasswordRequest
+            $validated = $request->validated();
             
             // Update password
             $user->update([
-                'password' => Hash::make($request->new_password)
+                'password' => Hash::make($validated['password'])
             ]);
+            
+            // Send security alert for password change
+            try {
+                $this->emailService->sendPasswordResetSecurityAlert($user, $request->ip(), $request->userAgent());
+                Log::channel('auth')->info('Password change security alert sent', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            } catch (\Exception $e) {
+                Log::channel('auth')->error('Failed to send password change security alert', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
             
             Log::channel('auth')->info('Password change completed successfully', [
                 'user_id' => $user->id,
@@ -756,14 +922,14 @@ class AuthController extends Controller
     }
 
     /**
-     * Delete user account
+     * Request account deletion (Step 1: Schedule deletion with 24-hour waiting period)
      */
-    public function deleteAccount(Request $request)
+    public function requestAccountDeletion(Request $request)
     {
         try {
             $user = $request->user();
             
-            Log::channel('auth')->info('Account deletion attempt', [
+            Log::channel('auth')->info('Account deletion request', [
                 'user_id' => $user->id,
                 'email' => $user->email,
                 'ip_address' => $request->ip()
@@ -771,11 +937,12 @@ class AuthController extends Controller
             
             $request->validate([
                 'password' => 'required',
+                'reason' => 'nullable|string|max:500'
             ]);
             
             // Verify password
             if (!Hash::check($request->password, $user->password)) {
-                Log::channel('auth')->warning('Account deletion failed - incorrect password', [
+                Log::channel('auth')->warning('Account deletion request failed - incorrect password', [
                     'user_id' => $user->id,
                     'email' => $user->email,
                     'ip_address' => $request->ip()
@@ -786,32 +953,227 @@ class AuthController extends Controller
                 ]);
             }
             
-            // Revoke all tokens
-            $user->tokens()->delete();
+            // Check if user already has a pending deletion
+            if ($user->deletion_scheduled_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Account deletion is already scheduled',
+                    'deletion_scheduled_at' => $user->deletion_scheduled_at,
+                    'hours_remaining' => max(0, now()->diffInHours($user->deletion_scheduled_at))
+                ], 400);
+            }
             
-            // Soft delete the user (if using soft deletes) or hard delete
-            $user->delete();
+            // Schedule deletion for 24 hours from now
+            $deletionDate = now()->addHours(24);
+            $user->update([
+                'deletion_scheduled_at' => $deletionDate,
+                'deletion_reason' => $request->reason
+            ]);
             
-            Log::channel('auth')->info('Account deletion completed successfully', [
+            // Send account deletion request email
+            try {
+                $this->emailService->sendAccountDeletionRequestEmail(
+                    $user,
+                    $request->reason,
+                    $deletionDate->format('F j, Y \a\t g:i A T')
+                );
+                Log::channel('auth')->info('Account deletion request email sent', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'deletion_scheduled_at' => $deletionDate
+                ]);
+            } catch (\Exception $e) {
+                Log::channel('auth')->error('Failed to send account deletion request email', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
+            // Send security alert
+            try {
+                $this->emailService->sendAccountDeletionSecurityAlert($user, $request->ip(), $request->userAgent());
+                Log::channel('auth')->info('Account deletion security alert sent', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            } catch (\Exception $e) {
+                Log::channel('auth')->error('Failed to send account deletion security alert', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
+            Log::channel('auth')->info('Account deletion scheduled successfully', [
                 'user_id' => $user->id,
-                'email' => $user->email
+                'email' => $user->email,
+                'deletion_scheduled_at' => $deletionDate
             ]);
             
             return response()->json([
-                'message' => 'Account deleted successfully'
+                'message' => 'Account deletion scheduled for 24 hours from now. You will receive a final confirmation email before deletion.',
+                'deletion_scheduled_at' => $deletionDate,
+                'hours_remaining' => 24
             ]);
             
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            Log::channel('auth')->error('Account deletion failed', [
+            Log::channel('auth')->error('Account deletion request failed', [
                 'user_id' => $request->user()?->id,
                 'error' => $e->getMessage(),
                 'ip_address' => $request->ip()
             ]);
             
             return response()->json([
-                'message' => 'Account deletion failed'
+                'message' => 'Account deletion request failed'
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel account deletion request
+     */
+    public function cancelAccountDeletion(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            Log::channel('auth')->info('Account deletion cancellation request', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'ip_address' => $request->ip()
+            ]);
+            
+            if (!$user->deletion_scheduled_at) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No account deletion is scheduled'
+                ], 400);
+            }
+            
+            // Cancel the scheduled deletion
+            $user->update([
+                'deletion_scheduled_at' => null,
+                'deletion_reason' => null
+            ]);
+            
+            Log::channel('auth')->info('Account deletion cancelled successfully', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+            
+            return response()->json([
+                'message' => 'Account deletion has been cancelled successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::channel('auth')->error('Account deletion cancellation failed', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+                'ip_address' => $request->ip()
+            ]);
+            
+            return response()->json([
+                'message' => 'Account deletion cancellation failed'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get account deletion status
+     */
+    public function getAccountDeletionStatus(Request $request)
+    {
+        try {
+            $user = $request->user();
+            
+            if (!$user->deletion_scheduled_at) {
+                return response()->json([
+                    'scheduled' => false,
+                    'message' => 'No account deletion is scheduled'
+                ]);
+            }
+            
+            $hoursRemaining = max(0, now()->diffInHours($user->deletion_scheduled_at));
+            
+            return response()->json([
+                'scheduled' => true,
+                'deletion_scheduled_at' => $user->deletion_scheduled_at,
+                'hours_remaining' => $hoursRemaining,
+                'reason' => $user->deletion_reason
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::channel('auth')->error('Failed to get account deletion status', [
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to get account deletion status'
+            ], 500);
+        }
+    }
+
+    /**
+     * Execute scheduled account deletions (called by scheduled command)
+     */
+    public function executeScheduledDeletions()
+    {
+        try {
+            $usersToDelete = User::where('deletion_scheduled_at', '<=', now())
+                ->whereNotNull('deletion_scheduled_at')
+                ->get();
+            
+            foreach ($usersToDelete as $user) {
+                Log::channel('auth')->info('Executing scheduled account deletion', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'scheduled_at' => $user->deletion_scheduled_at
+                ]);
+                
+                // Send final confirmation email
+                try {
+                    $this->emailService->sendAccountDeletionConfirmationEmail(
+                        $user,
+                        now()->format('F j, Y \a\t g:i A T'),
+                        false,
+                        []
+                    );
+                } catch (\Exception $e) {
+                    Log::channel('auth')->error('Failed to send final deletion confirmation email', [
+                        'user_id' => $user->id,
+                        'email' => $user->email,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+                
+                // Revoke all tokens
+                $user->tokens()->delete();
+                
+                // Delete the user
+                $user->delete();
+                
+                Log::channel('auth')->info('Scheduled account deletion completed', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            }
+            
+            return response()->json([
+                'message' => 'Scheduled deletions executed',
+                'deleted_count' => $usersToDelete->count()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::channel('auth')->error('Failed to execute scheduled deletions', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'message' => 'Failed to execute scheduled deletions'
             ], 500);
         }
     }
@@ -819,7 +1181,7 @@ class AuthController extends Controller
     /**
      * Update user profile
      */
-    public function updateProfile(Request $request)
+    public function updateProfile(UpdateProfileRequest $request)
     {
         try {
             $user = $request->user();
@@ -830,15 +1192,8 @@ class AuthController extends Controller
                 'ip_address' => $request->ip()
             ]);
             
-            $request->validate([
-                'name' => 'sometimes|required|string|max:255',
-                'email' => 'sometimes|required|string|email|max:255|unique:users,email,' . $user->id,
-                'company' => 'sometimes|nullable|string|max:255',
-                'contact_number' => 'sometimes|nullable|string|max:20',
-                'tax_id' => 'sometimes|nullable|string|max:50',
-                'avatar' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif|max:2048'
-            ]);
-            
+            // Validation handled by UpdateProfileRequest
+            $validated = $request->validated();
             $updateData = $request->only(['name', 'email', 'company', 'contact_number', 'tax_id']);
             
             // Handle avatar upload
@@ -880,5 +1235,97 @@ class AuthController extends Controller
                 'message' => 'Profile update failed'
             ], 500);
         }
+    }
+
+    /**
+     * Send admin login notification email
+     */
+    private function sendAdminLoginNotification(Admin $admin, string $status, Request $request, ?string $reason = null)
+    {
+        // Only send if login notifications are enabled for this admin
+        if (!$admin->login_notifications_enabled) {
+            return;
+        }
+
+        try {
+            $timestamp = now()->format('F j, Y \a\t g:i A T');
+            $userAgent = $this->parseUserAgent($request->userAgent());
+            $location = $this->getLocationFromIp($request->ip());
+
+            Mail::to($admin->email)->send(new AdminLoginNotification(
+                $admin,
+                $status,
+                $request->ip(),
+                $userAgent,
+                $timestamp,
+                $location,
+                $reason
+            ));
+
+            Log::channel('security')->info('Admin login notification email sent', [
+                'admin_id' => $admin->id,
+                'email' => $admin->email,
+                'status' => $status,
+                'ip_address' => $request->ip(),
+                'timestamp' => $timestamp
+            ]);
+        } catch (\Exception $e) {
+            Log::channel('security')->error('Failed to send admin login notification email', [
+                'admin_id' => $admin->id,
+                'email' => $admin->email,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Parse user agent to get readable device/browser info
+     */
+    private function parseUserAgent(string $userAgent): string
+    {
+        // Simple user agent parsing - you can use a more sophisticated library if needed
+        if (str_contains($userAgent, 'Chrome')) {
+            $browser = 'Chrome';
+        } elseif (str_contains($userAgent, 'Firefox')) {
+            $browser = 'Firefox';
+        } elseif (str_contains($userAgent, 'Safari')) {
+            $browser = 'Safari';
+        } elseif (str_contains($userAgent, 'Edge')) {
+            $browser = 'Edge';
+        } else {
+            $browser = 'Unknown Browser';
+        }
+
+        if (str_contains($userAgent, 'Windows')) {
+            $os = 'Windows';
+        } elseif (str_contains($userAgent, 'Mac')) {
+            $os = 'macOS';
+        } elseif (str_contains($userAgent, 'Linux')) {
+            $os = 'Linux';
+        } elseif (str_contains($userAgent, 'Android')) {
+            $os = 'Android';
+        } elseif (str_contains($userAgent, 'iOS')) {
+            $os = 'iOS';
+        } else {
+            $os = 'Unknown OS';
+        }
+
+        return "{$browser} on {$os}";
+    }
+
+    /**
+     * Get location from IP address (simplified version)
+     */
+    private function getLocationFromIp(string $ip): string
+    {
+        // For localhost/development
+        if ($ip === '127.0.0.1' || $ip === '::1' || str_starts_with($ip, '192.168.') || str_starts_with($ip, '10.')) {
+            return 'Local Network';
+        }
+
+        // In production, you could integrate with a geolocation service
+        // For now, return a generic message
+        return 'Unknown Location';
     }
 }

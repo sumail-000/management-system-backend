@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\EdamamNutritionService;
+use App\Services\ApiUsageTracker;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -50,7 +51,13 @@ class NutritionController extends Controller
         }
 
         try {
-            $nutritionData = $this->nutritionService->analyzeNutrition($ingredients, $title);
+            // Track the API call
+            $nutritionData = ApiUsageTracker::trackNutritionCall(
+                function() use ($ingredients, $title) {
+                    return $this->nutritionService->analyzeNutrition($ingredients, $title);
+                },
+                $ingredients
+            );
 
             if ($nutritionData === null) {
                 return response()->json([

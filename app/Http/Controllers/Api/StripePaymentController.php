@@ -9,6 +9,7 @@ use App\Models\BillingInformation;
 use App\Models\PaymentMethod;
 use App\Models\BillingHistory;
 use App\Services\StripeService;
+use App\Services\EmailService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -22,10 +23,12 @@ use Exception;
 class StripePaymentController extends Controller
 {
     protected $stripeService;
+    protected $emailService;
 
-    public function __construct(StripeService $stripeService)
+    public function __construct(StripeService $stripeService, EmailService $emailService)
     {
         $this->stripeService = $stripeService;
+        $this->emailService = $emailService;
     }
 
     /**
@@ -225,6 +228,23 @@ class StripePaymentController extends Controller
                 'billing_saved' => true
             ]);
             
+            // Send subscription confirmation email
+            try {
+                $this->emailService->sendSubscriptionConfirmationEmail($user, $plan);
+                Log::info('Subscription confirmation email sent successfully', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'plan' => $plan->name
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to send subscription confirmation email', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'plan' => $plan->name,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
             // Get updated subscription information
             $subscriptionInfo = $user->fresh()->getSubscriptionInfo();
             
@@ -364,6 +384,21 @@ class StripePaymentController extends Controller
         if ($user->hasPaidSubscription()) {
             $user->requestCancellation($request->reason);
             
+            // Send cancellation request security alert
+            try {
+                $this->emailService->sendCancellationRequestSecurityAlert($user, $request->ip(), $request->userAgent());
+                Log::info('Cancellation request security alert sent', [
+                    'user_id' => $user->id,
+                    'email' => $user->email
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to send cancellation request security alert', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            
             Log::info('Subscription cancellation requested', [
                 'user_id' => $user->id,
                 'reason' => $request->reason,
@@ -415,6 +450,40 @@ class StripePaymentController extends Controller
         // Confirm the cancellation and set 3-day waiting period
         $user->confirmCancellation();
         
+        // Schedule Stripe subscription cancellation at period end (not immediate)
+        if ($user->stripe_subscription_id) {
+            try {
+                $this->stripeService->scheduleSubscriptionCancellation($user->stripe_subscription_id);
+                Log::info('Stripe subscription scheduled for cancellation', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $user->stripe_subscription_id,
+                    'effective_at' => $user->cancellation_effective_at
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to schedule Stripe subscription cancellation', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $user->stripe_subscription_id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+        
+        // Send subscription cancellation email
+        try {
+            $reason = $user->cancellation_reason ?: 'Unknown reason';
+            $this->emailService->sendSubscriptionCancellationEmail($user, $user->membershipPlan, $reason);
+            Log::info('Subscription cancellation email sent', [
+                'user_id' => $user->id,
+                'email' => $user->email
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send subscription cancellation email', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'error' => $e->getMessage()
+            ]);
+        }
+        
         Log::info('Subscription cancellation confirmed', [
             'user_id' => $user->id,
             'confirmed_at' => now(),
@@ -445,6 +514,23 @@ class StripePaymentController extends Controller
         }
 
         $user->cancelCancellationRequest();
+        
+        // Reactivate Stripe subscription (cancel the scheduled cancellation)
+        if ($user->stripe_subscription_id) {
+            try {
+                $this->stripeService->cancelScheduledCancellation($user->stripe_subscription_id);
+                Log::info('Stripe subscription reactivated', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $user->stripe_subscription_id
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to reactivate Stripe subscription', [
+                    'user_id' => $user->id,
+                    'subscription_id' => $user->stripe_subscription_id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
         
         Log::info('Subscription cancellation request cancelled', [
             'user_id' => $user->id,

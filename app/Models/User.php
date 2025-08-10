@@ -28,7 +28,6 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'role',
         'membership_plan_id',
         'payment_status',
         'trial_started_at',
@@ -48,6 +47,8 @@ class User extends Authenticatable
         'cancellation_effective_at',
         'cancellation_reason',
         'cancellation_confirmed',
+        'deletion_scheduled_at',
+        'deletion_reason',
     ];
 
     /**
@@ -79,6 +80,7 @@ class User extends Authenticatable
             'cancellation_requested_at' => 'datetime',
             'cancellation_effective_at' => 'datetime',
             'cancellation_confirmed' => 'boolean',
+            'deletion_scheduled_at' => 'datetime',
         ];
     }
 
@@ -170,13 +172,6 @@ class User extends Authenticatable
         return $this->hasMany(Usage::class);
     }
 
-    /**
-     * Check if user is admin.
-     */
-    public function isAdmin(): bool
-    {
-        return $this->role === 'admin';
-    }
 
     /**
      * Check if user has reached their product limit.
@@ -486,5 +481,38 @@ class User extends Authenticatable
         if (in_array($feature, ['products','qr_codes', 'labels'])) {
             $usage->increment($feature);
         }
+    }
+
+    /**
+     * Check if account deletion is scheduled.
+     */
+    public function hasDeletionScheduled(): bool
+    {
+        return $this->deletion_scheduled_at && $this->deletion_scheduled_at->isFuture();
+    }
+
+    /**
+     * Get hours remaining until deletion.
+     */
+    public function getDeletionHoursRemaining(): int
+    {
+        if (!$this->hasDeletionScheduled()) {
+            return 0;
+        }
+        
+        return max(0, (int) now()->diffInHours($this->deletion_scheduled_at));
+    }
+
+    /**
+     * Get deletion information.
+     */
+    public function getDeletionInfo(): array
+    {
+        return [
+            'scheduled' => $this->hasDeletionScheduled(),
+            'deletion_scheduled_at' => $this->deletion_scheduled_at,
+            'hours_remaining' => $this->getDeletionHoursRemaining(),
+            'reason' => $this->deletion_reason
+        ];
     }
 }

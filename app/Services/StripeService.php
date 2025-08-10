@@ -232,7 +232,7 @@ class StripeService
     }
 
     /**
-     * Cancel a subscription
+     * Cancel a subscription immediately
      */
     public function cancelSubscription($subscriptionId)
     {
@@ -241,6 +241,36 @@ class StripeService
             return $subscription->cancel();
         } catch (Exception $e) {
             Log::error('Stripe subscription cancellation failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Schedule subscription cancellation at period end
+     */
+    public function scheduleSubscriptionCancellation($subscriptionId)
+    {
+        try {
+            return Subscription::update($subscriptionId, [
+                'cancel_at_period_end' => true,
+            ]);
+        } catch (Exception $e) {
+            Log::error('Stripe subscription schedule cancellation failed: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Cancel the scheduled cancellation (reactivate subscription)
+     */
+    public function cancelScheduledCancellation($subscriptionId)
+    {
+        try {
+            return Subscription::update($subscriptionId, [
+                'cancel_at_period_end' => false,
+            ]);
+        } catch (Exception $e) {
+            Log::error('Stripe cancel scheduled cancellation failed: ' . $e->getMessage());
             throw $e;
         }
     }

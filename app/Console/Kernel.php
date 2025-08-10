@@ -18,9 +18,21 @@ class Kernel extends ConsoleKernel
                  ->withoutOverlapping()
                  ->runInBackground();
                  
-        // Process cancellation requests daily at 3 AM
-        $schedule->command('cancellations:process-requests')
-                 ->dailyAt('03:00')
+        // Process scheduled subscription cancellations every hour
+        $schedule->command('subscriptions:process-cancellations')
+                 ->hourly()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+                 
+        // Process scheduled account deletions every hour
+        $schedule->command('accounts:process-deletions')
+                 ->hourly()
+                 ->withoutOverlapping()
+                 ->runInBackground();
+                 
+        // Check usage warnings daily at 9 AM
+        $schedule->command('usage:check-warnings')
+                 ->dailyAt('09:00')
                  ->withoutOverlapping()
                  ->runInBackground();
     }

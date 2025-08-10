@@ -89,8 +89,10 @@
                 <li><strong>Plan:</strong> {{ $plan->name ?? 'Premium' }}</li>
                 <li><strong>Cancellation Date:</strong> {{ $user->cancelled_at ? $user->cancelled_at->format('F j, Y') : now()->format('F j, Y') }}</li>
                 <li><strong>Service End Date:</strong> {{ $user->subscription_ends_at ? $user->subscription_ends_at->format('F j, Y') : now()->format('F j, Y') }}</li>
-                @if($reason)
+                @if($reason && $reason !== 'Unknown reason')
                 <li><strong>Reason:</strong> {{ $reason }}</li>
+                @elseif(!$reason || $reason === 'Unknown reason')
+                <li><strong>Reason:</strong> Unknown reason</li>
                 @endif
             </ul>
         </div>

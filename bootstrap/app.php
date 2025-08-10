@@ -12,15 +12,23 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Enable CORS middleware
+        // Enable CORS middleware and security headers
         $middleware->api(prepend: [
             \Illuminate\Http\Middleware\HandleCors::class,
+            \App\Http\Middleware\SecurityHeaders::class,
+        ]);
+        
+        // Apply security headers to all web routes as well
+        $middleware->web(prepend: [
+            \App\Http\Middleware\SecurityHeaders::class,
         ]);
         
         $middleware->alias([
             'dashboard.access' => \App\Http\Middleware\CheckDashboardAccess::class,
             'token.refresh' => \App\Http\Middleware\TokenRefresh::class,
             'edamam.api' => \App\Http\Middleware\EdamamApiMiddleware::class,
+            'admin.role.guard' => \App\Http\Middleware\AdminRoleGuard::class,
+            'enhanced.token.security' => \App\Http\Middleware\EnhancedTokenSecurity::class,
         ]);
         
         // Configure authentication to return JSON responses for API routes

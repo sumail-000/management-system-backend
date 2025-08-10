@@ -162,29 +162,7 @@
         <h3>🔄 Want to Change Your Mind?</h3>
         <p>If you've changed your mind about deleting your account, you can cancel this request at any time during the confirmation period.</p>
         
-        <div style="text-align: center; margin: 30px 0;">
-            @if($confirmationToken)
-            <a href="{{ config('app.frontend_url') }}/account/delete/confirm/{{ $confirmationToken }}" class="btn btn-danger">Confirm Deletion</a>
-            <a href="{{ config('app.frontend_url') }}/account/delete/cancel/{{ $confirmationToken }}" class="btn btn-secondary">Cancel Request</a>
-            @else
-            <a href="{{ config('app.frontend_url') }}/settings/account" class="btn btn-primary">Manage Account</a>
-            @endif
-            <a href="{{ config('app.frontend_url') }}/support" class="btn btn-secondary">Contact Support</a>
-        </div>
-        
-        <div class="info-box">
-            <h3 style="margin: 0 0 15px 0; color: #0c5460;">💾 Before You Go - Data Export</h3>
-            <p style="margin: 0;">If you need a copy of your data before deletion, you can export it from your account dashboard. This includes:</p>
-            <ul style="margin: 10px 0 0 0; padding-left: 20px;">
-                <li>Product catalog and inventory data</li>
-                <li>Order history and customer information</li>
-                <li>Reports and analytics data</li>
-                <li>Account settings and preferences</li>
-            </ul>
-            <div style="text-align: center; margin: 15px 0 0 0;">
-                <a href="{{ config('app.frontend_url') }}/settings/export" class="btn btn-primary">Export My Data</a>
-            </div>
-        </div>
+        <p>You can cancel this deletion request by logging into your account during the waiting period.</p>
         
         <h3>🤝 We're Sorry to See You Go</h3>
         <p>We're sad to see you leave the Food Management System family. If there's anything we could have done better or if you're leaving due to a specific issue, we'd love to hear from you.</p>
