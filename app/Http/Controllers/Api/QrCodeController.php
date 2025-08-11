@@ -104,7 +104,7 @@ class QrCodeController extends Controller
             $isEnterpriseUser = $user->membershipPlan && $user->membershipPlan->name === 'Enterprise';
 
             // Generate public URL for the product
-            $publicUrl = config('app.url') . '/public/products/' . $product->id;
+            $publicUrl = config('app.url') . '/public/product/' . $product->id;
 
             // Set QR code options with improved defaults for better corner rendering
             $size = $request->get('size', 300);

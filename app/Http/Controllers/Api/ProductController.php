@@ -1453,7 +1453,7 @@ class ProductController extends Controller
         try {
             $query = Product::where('status', 'published')
                 ->where('is_public', true)
-                ->with(['category']);
+                ->with(['category', 'user:id,name', 'qrCodes']);
 
             // Apply search
             if ($request->has('search')) {
@@ -1507,7 +1507,7 @@ class ProductController extends Controller
             $product = Product::where('id', $id)
                 ->where('status', 'published')
                 ->where('is_public', true)
-                ->with(['category'])
+                ->with(['category', 'user:id,name', 'qrCodes'])
                 ->first();
 
             if (!$product) {

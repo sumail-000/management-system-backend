@@ -57,6 +57,7 @@ class Product extends Model
 
     protected $appends = [
         'image',
+        'ingredients',
     ];
 
     public function user(): BelongsTo
