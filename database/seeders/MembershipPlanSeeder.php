@@ -23,7 +23,7 @@ class MembershipPlanSeeder extends Seeder
                 'description' => 'Perfect for small food businesses getting started',
                 'features' => [
                     'Manual product entry only',
-                    'Max 3 product submissions/14 days',
+                    'Max 3 product submissions/month',
                     'Standard label templates',
                     'Basic compliance feedback',
                     'Self-help support',
@@ -32,7 +32,7 @@ class MembershipPlanSeeder extends Seeder
                 ],
                 'product_limit' => 3,
                 'label_limit' => 10,
-                'qr_code_limit' => 0, // No QR codes for Basic plan
+                'qr_code_limit' => 3,// No QR codes for Basic plan
             ],
             [
                 'name' => 'Pro',

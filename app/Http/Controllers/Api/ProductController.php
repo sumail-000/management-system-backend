@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Services\UsageTrackingService;
 
 class ProductController extends Controller
 {
@@ -93,6 +94,28 @@ class ProductController extends Controller
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
+            }
+
+            // Enforce plan limit for product creation
+            $user = Auth::user();
+            $usageService = app(UsageTrackingService::class);
+            if (!$usageService->canCreateProduct($user)) {
+                $usage = $usageService->getCurrentUsage($user);
+                $currentPlan = $user->membershipPlan?->name ?? 'Basic';
+                $nextPlan = $currentPlan === 'Basic' ? 'Pro' : ($currentPlan === 'Pro' ? 'Enterprise' : null);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You have reached your recipe creation limit for your current plan.',
+                    'upgrade_required' => true,
+                    'error_code' => 'PLAN_LIMIT_REACHED',
+                    'limit_info' => [
+                        'resource' => 'products',
+                        'current' => $usage['products']['current_month'] ?? 0,
+                        'limit' => $usage['products']['limit'] ?? 0,
+                        'plan' => $currentPlan,
+                        'next_plan' => $nextPlan
+                    ]
+                ], 403);
             }
 
             $product = Product::create([
@@ -296,6 +319,28 @@ class ProductController extends Controller
                     'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
+            }
+
+            // Enforce plan limit for label generation (mapped to labels usage)
+            $user = Auth::user();
+            $usageService = app(UsageTrackingService::class);
+            if (!$usageService->canCreateLabel($user)) {
+                $usage = $usageService->getCurrentUsage($user);
+                $currentPlan = $user->membershipPlan?->name ?? 'Basic';
+                $nextPlan = $currentPlan === 'Basic' ? 'Pro' : ($currentPlan === 'Pro' ? 'Enterprise' : null);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You have reached your label generation limit for your current plan.',
+                    'upgrade_required' => true,
+                    'error_code' => 'PLAN_LIMIT_REACHED',
+                    'limit_info' => [
+                        'resource' => 'labels',
+                        'current' => $usage['labels']['current_month'] ?? 0,
+                        'limit' => $usage['labels']['limit'] ?? 0,
+                        'plan' => $currentPlan,
+                        'next_plan' => $nextPlan
+                    ]
+                ], 403);
             }
 
             // Update product with nutrition data
@@ -990,6 +1035,28 @@ class ProductController extends Controller
         try {
             $originalProduct = Product::where('user_id', Auth::id())->findOrFail($id);
             
+            // Enforce plan limit for product duplication (counts toward creation limit)
+            $user = Auth::user();
+            $usageService = app(UsageTrackingService::class);
+            if (!$usageService->canCreateProduct($user)) {
+                $usage = $usageService->getCurrentUsage($user);
+                $currentPlan = $user->membershipPlan?->name ?? 'Basic';
+                $nextPlan = $currentPlan === 'Basic' ? 'Pro' : ($currentPlan === 'Pro' ? 'Enterprise' : null);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You have reached your recipe creation limit for your current plan.',
+                    'upgrade_required' => true,
+                    'error_code' => 'PLAN_LIMIT_REACHED',
+                    'limit_info' => [
+                        'resource' => 'products',
+                        'current' => $usage['products']['current_month'] ?? 0,
+                        'limit' => $usage['products']['limit'] ?? 0,
+                        'plan' => $currentPlan,
+                        'next_plan' => $nextPlan
+                    ]
+                ], 403);
+            }
+            
             // Create a new product with the same data
             $newProduct = $originalProduct->replicate();
             $newProduct->name = $originalProduct->name . ' (Copy)';
@@ -1117,8 +1184,8 @@ class ProductController extends Controller
     public function getCategories(): JsonResponse
     {
         try {
-            $user = Auth::user();
-            $categories = Category::forUser($user->id)
+            $userId = Auth::id();
+            $categories = Category::forUser($userId)
                 ->withCount('products')
                 ->orderBy('name')
                 ->get(['id', 'name', 'created_at']);

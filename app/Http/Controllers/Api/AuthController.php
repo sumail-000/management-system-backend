@@ -90,13 +90,20 @@ class AuthController extends Controller
             // Handle trial setup based on selected plan
             if ($selectedPlan && $selectedPlan->name === 'Basic') {
                 // Basic plan users get 14-day free trial
-                $user->startTrial(14);
-                
-                Log::channel('auth')->info('Trial started for Basic plan user', [
-                    'user_id' => $user->id,
-                    'trial_ends_at' => $user->trial_ends_at,
-                    'trial_days' => 14
-                ]);
+                try {
+                    $user->startTrial(14);
+                    Log::channel('auth')->info('Trial started for Basic plan user', [
+                        'user_id' => $user->id,
+                        'trial_ends_at' => $user->trial_ends_at,
+                        'trial_days' => 14
+                    ]);
+                } catch (\Throwable $e) {
+                    // If schema is missing trial columns or enum doesn't include "trial", skip trial setup gracefully
+                    Log::channel('auth')->warning('Trial setup skipped due to schema mismatch', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
             } else {
                 // Pro/Enterprise users need payment before dashboard access
                 $user->update(['payment_status' => 'pending']);
@@ -112,11 +119,7 @@ class AuthController extends Controller
             /** @var \App\Models\User $user */
             $tokenResult = $user->createToken('auth_token');
             $token = $tokenResult->plainTextToken;
-            
-            // Set token expiration explicitly
-            $tokenResult->accessToken->update([
-                'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))
-            ]);
+            // Token expiration is managed by Sanctum configuration (config('sanctum.expiration'))
 
             Log::channel('auth')->info('Authentication token generated for new user', [
                 'user_id' => $user->id,
@@ -131,7 +134,7 @@ class AuthController extends Controller
                 'user' => $user->load('membershipPlan'),
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
+                'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString(),
                 'expires_in' => (int) config('sanctum.expiration', 1440) * 60, // seconds
                 'payment_status' => $user->payment_status,
                 'requires_payment' => !$user->canAccessDashboard(),
@@ -254,11 +257,7 @@ class AuthController extends Controller
             // Create token for admin
             $tokenResult = $admin->createToken('admin_auth_token');
             $token = $tokenResult->plainTextToken;
-            
-            // Set token expiration
-            $tokenResult->accessToken->update([
-                'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))
-            ]);
+            // Token expiration is managed by Sanctum configuration (config('sanctum.expiration'))
             
             Log::channel('auth')->info('Admin login successful', [
                 'admin_id' => $admin->id,
@@ -287,7 +286,7 @@ class AuthController extends Controller
                 'admin' => $admin,
                 'access_token' => $token,
                 'token_type' => 'Bearer',
-                'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
+                'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString(),
                 'expires_in' => (int) config('sanctum.expiration', 1440) * 60,
                 'redirect_to' => '/admin-panel',
             ]);
@@ -354,11 +353,7 @@ class AuthController extends Controller
         // Laravel Sanctum's HasApiTokens trait provides createToken method
         $tokenResult = $user->createToken('auth_token');
         $token = $tokenResult->plainTextToken;
-        
-        // Set token expiration explicitly
-        $tokenResult->accessToken->update([
-            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))
-        ]);
+        // Token expiration is managed by Sanctum configuration (config('sanctum.expiration'))
         
         $deletionCancelled = false;
         
@@ -391,7 +386,7 @@ class AuthController extends Controller
             'usage_percentages' => $percentages,
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'expires_at' => $tokenResult->accessToken->expires_at->toISOString(),
+            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString(),
             'expires_in' => (int) config('sanctum.expiration', 1440) * 60, // seconds
             'payment_status' => $user->payment_status,
             'can_access_dashboard' => $user->canAccessDashboard(),
