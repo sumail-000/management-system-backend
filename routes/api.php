@@ -176,6 +176,13 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
         Route::put('/settings', [SettingsController::class, 'update']);
         Route::post('/settings/reset', [SettingsController::class, 'reset']);
         Route::get('/settings/options', [SettingsController::class, 'options']);
+
+        // Notifications
+        Route::get('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'index']);
+        Route::post('/notifications', [\App\Http\Controllers\Api\NotificationController::class, 'store']);
+        Route::patch('/notifications/{id}/read', [\App\Http\Controllers\Api\NotificationController::class, 'markRead']);
+        Route::patch('/notifications/mark-all-read', [\App\Http\Controllers\Api\NotificationController::class, 'markAllRead']);
+        Route::delete('/notifications/{id}', [\App\Http\Controllers\Api\NotificationController::class, 'destroy']);
     });
     
     // QR Code Management Routes

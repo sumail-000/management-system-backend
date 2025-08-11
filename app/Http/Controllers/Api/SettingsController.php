@@ -32,6 +32,26 @@ class SettingsController extends Controller
                     'timezone' => 'UTC',
                     'email_notifications' => true,
                     'push_notifications' => true,
+                    'notification_preferences' => [
+                        'enableSound' => true,
+                        'soundVolume' => 75,
+                        'enablePush' => true,
+                        'enableEmail' => false,
+                        'enableSMS' => false,
+                        'autoDeleteDays' => '30',
+                        'muteHours' => [
+                            'enabled' => false,
+                            'start' => '22:00',
+                            'end' => '08:00'
+                        ],
+                        'categories' => [
+                            'products' => true,
+                            'labels' => true,
+                            'compliance' => true,
+                            'reports' => false,
+                            'system' => true
+                        ]
+                    ],
                     'default_serving_unit' => 'grams',
                     'label_template_preferences' => []
                 ]);
@@ -78,6 +98,7 @@ class SettingsController extends Controller
                 'timezone' => 'sometimes|string|max:50',
                 'email_notifications' => 'sometimes|boolean',
                 'push_notifications' => 'sometimes|boolean',
+                'notification_preferences' => 'sometimes|array',
                 'default_serving_unit' => 'sometimes|string|in:grams,ounces,pounds,kilograms',
                 'label_template_preferences' => 'sometimes|array'
             ]);
@@ -104,6 +125,7 @@ class SettingsController extends Controller
                 'timezone',
                 'email_notifications',
                 'push_notifications',
+                'notification_preferences',
                 'default_serving_unit',
                 'label_template_preferences'
             ]);
@@ -160,6 +182,26 @@ class SettingsController extends Controller
                 'timezone' => 'UTC',
                 'email_notifications' => true,
                 'push_notifications' => true,
+                'notification_preferences' => [
+                    'enableSound' => true,
+                    'soundVolume' => 75,
+                    'enablePush' => true,
+                    'enableEmail' => false,
+                    'enableSMS' => false,
+                    'autoDeleteDays' => '30',
+                    'muteHours' => [
+                        'enabled' => false,
+                        'start' => '22:00',
+                        'end' => '08:00'
+                    ],
+                    'categories' => [
+                        'products' => true,
+                        'labels' => true,
+                        'compliance' => true,
+                        'reports' => false,
+                        'system' => true
+                    ]
+                ],
                 'default_serving_unit' => 'grams',
                 'label_template_preferences' => []
             ]);

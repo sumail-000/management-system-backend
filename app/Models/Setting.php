@@ -17,12 +17,14 @@ class Setting extends Model
         'timezone',
         'email_notifications',
         'push_notifications',
+        'notification_preferences',
         'label_template_preferences',
     ];
 
     protected $casts = [
         'email_notifications' => 'boolean',
         'push_notifications' => 'boolean',
+        'notification_preferences' => 'array',
         'label_template_preferences' => 'array',
     ];
 
