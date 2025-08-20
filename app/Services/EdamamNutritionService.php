@@ -47,6 +47,11 @@ class EdamamNutritionService
                 return $data;
             }
 
+            // Handle specific error for rate limiting
+            if ($response->status() == 429) {
+                throw new Exception('Edamam API rate limit exceeded. Please try again later.');
+            }
+
             Log::error('Edamam Nutrition Analysis API Error', [
                 'status' => $response->status(),
                 'body' => $response->body(),

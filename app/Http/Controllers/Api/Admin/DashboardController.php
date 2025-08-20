@@ -18,178 +18,95 @@ use Carbon\Carbon;
 class DashboardController extends Controller
 {
     /**
-     * Get dashboard metrics for the specified month/year
+     * Get dashboard metrics
      */
     public function getMetrics(Request $request): JsonResponse
     {
-        $request->validate([
-            'month' => 'nullable|integer|min:1|max:12',
-            'year' => 'nullable|integer|min:2020|max:' . (date('Y') + 1),
-        ]);
-
-        $month = $request->input('month', now()->month);
-        $year = $request->input('year', now()->year);
-
-        // Create date ranges for current and previous month
-        $currentStart = Carbon::create($year, $month, 1)->startOfMonth();
-        $currentEnd = Carbon::create($year, $month, 1)->endOfMonth();
-        
-        $previousStart = $currentStart->copy()->subMonth()->startOfMonth();
-        $previousEnd = $currentStart->copy()->subMonth()->endOfMonth();
-
-        // Cache key for metrics
-        $cacheKey = "admin_dashboard_metrics_{$year}_{$month}";
-        
-        $metrics = Cache::remember($cacheKey, 300, function () use ($currentStart, $currentEnd, $previousStart, $previousEnd) {
-            return [
-                'total_users' => $this->getTotalUsersMetric($currentStart, $currentEnd, $previousStart, $previousEnd),
-                'active_products' => $this->getActiveProductsMetric($currentStart, $currentEnd, $previousStart, $previousEnd),
-                'monthly_revenue' => $this->getMonthlyRevenueMetric($currentStart, $currentEnd, $previousStart, $previousEnd),
-                'api_calls_today' => $this->getApiCallsTodayMetric(),
-            ];
-        });
+        $metrics = [
+            'total_users' => $this->getTotalUsersMetric(),
+            'active_products' => $this->getActiveProductsMetric(),
+            'monthly_revenue' => $this->getMonthlyRevenueMetric(),
+            'api_calls_today' => $this->getApiCallsTodayMetric(),
+        ];
 
         return response()->json([
             'success' => true,
-            'data' => $metrics,
-            'period' => [
-                'month' => $month,
-                'year' => $year,
-                'current_period' => [
-                    'start' => $currentStart->toDateString(),
-                    'end' => $currentEnd->toDateString(),
-                ],
-                'previous_period' => [
-                    'start' => $previousStart->toDateString(),
-                    'end' => $previousEnd->toDateString(),
-                ]
-            ]
+            'data' => $metrics
         ]);
     }
 
     /**
-     * Get total users metric with comparison
+     * Get total users metric
      */
-    private function getTotalUsersMetric(Carbon $currentStart, Carbon $currentEnd, Carbon $previousStart, Carbon $previousEnd): array
+    private function getTotalUsersMetric(): array
     {
-        // Current month users
-        $currentUsers = User::whereBetween('created_at', [$currentStart, $currentEnd])->count();
-        
-        // Previous month users
-        $previousUsers = User::whereBetween('created_at', [$previousStart, $previousEnd])->count();
-        
-        // Total users up to current month
-        $totalUsers = User::where('created_at', '<=', $currentEnd)->count();
-        
-        // Calculate percentage change
-        $percentageChange = $this->calculatePercentageChange($currentUsers, $previousUsers);
+        // All-time total users, using DB facade to bypass any model scopes/issues
+        $totalUsers = DB::table('users')->count();
         
         return [
             'title' => 'Total Users',
-            'value' => $totalUsers > 0 ? number_format($totalUsers) : '0',
-            'current_period_count' => $currentUsers,
-            'previous_period_count' => $previousUsers,
-            'change' => $percentageChange['formatted'],
-            'trend' => $percentageChange['trend'],
+            'value' => number_format($totalUsers),
+            'change' => 'N/A',
+            'trend' => 'up',
             'icon' => 'Users',
             'color' => 'blue'
         ];
     }
 
     /**
-     * Get active products metric with comparison
+     * Get active products metric
      */
-    private function getActiveProductsMetric(Carbon $currentStart, Carbon $currentEnd, Carbon $previousStart, Carbon $previousEnd): array
+    private function getActiveProductsMetric(): array
     {
-        // Current month products
-        $currentProducts = Product::whereBetween('created_at', [$currentStart, $currentEnd])
-            ->whereNull('deleted_at')
-            ->count();
-        
-        // Previous month products
-        $previousProducts = Product::whereBetween('created_at', [$previousStart, $previousEnd])
-            ->whereNull('deleted_at')
-            ->count();
-        
-        // Total active products
-        $totalProducts = Product::whereNull('deleted_at')->count();
-        
-        // Calculate percentage change
-        $percentageChange = $this->calculatePercentageChange($currentProducts, $previousProducts);
+        // All-time total active (not soft-deleted) products, using DB facade
+        $totalProducts = DB::table('products')->whereNull('deleted_at')->count();
         
         return [
             'title' => 'Active Products',
-            'value' => $totalProducts > 0 ? number_format($totalProducts) : '0',
-            'current_period_count' => $currentProducts,
-            'previous_period_count' => $previousProducts,
-            'change' => $percentageChange['formatted'],
-            'trend' => $percentageChange['trend'],
+            'value' => number_format($totalProducts),
+            'change' => 'N/A',
+            'trend' => 'up',
             'icon' => 'Package',
             'color' => 'green'
         ];
     }
 
     /**
-     * Get monthly revenue metric with comparison
+     * Get monthly revenue metric for the current calendar month
      */
-    private function getMonthlyRevenueMetric(Carbon $currentStart, Carbon $currentEnd, Carbon $previousStart, Carbon $previousEnd): array
+    private function getMonthlyRevenueMetric(): array
     {
-        // Current month revenue
-        $currentRevenue = BillingHistory::whereBetween('created_at', [$currentStart, $currentEnd])
+        // Revenue for the current calendar month, using DB facade
+        $currentRevenue = DB::table('billing_history')
+            ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
             ->where('status', 'paid')
             ->sum('amount');
-        
-        // Previous month revenue
-        $previousRevenue = BillingHistory::whereBetween('created_at', [$previousStart, $previousEnd])
-            ->where('status', 'paid')
-            ->sum('amount');
-        
-        // Ensure we have numeric values
+            
         $currentRevenue = $currentRevenue ?: 0;
-        $previousRevenue = $previousRevenue ?: 0;
-        
-        // Calculate percentage change
-        $percentageChange = $this->calculatePercentageChange($currentRevenue, $previousRevenue);
-        
+
         return [
             'title' => 'Monthly Revenue',
             'value' => '$' . number_format($currentRevenue, 2),
-            'current_period_amount' => $currentRevenue,
-            'previous_period_amount' => $previousRevenue,
-            'change' => $percentageChange['formatted'],
-            'trend' => $percentageChange['trend'],
+            'change' => '',
+            'trend' => 'up',
             'icon' => 'DollarSign',
             'color' => 'purple'
         ];
     }
 
     /**
-     * Get API calls today metric with comparison to yesterday
+     * Get API calls today metric
      */
     private function getApiCallsTodayMetric(): array
     {
-        // Get real API usage data
-        $todayCalls = ApiUsage::getTodayCount();
-        $yesterdayCalls = ApiUsage::getYesterdayCount();
-        
-        // Calculate percentage change
-        $percentageChange = $this->calculatePercentageChange($todayCalls, $yesterdayCalls);
-        
-        // Get additional stats for metadata
-        $successfulToday = ApiUsage::getSuccessfulTodayCount();
-        $failedToday = ApiUsage::getFailedTodayCount();
-        $successRate = $todayCalls > 0 ? ($successfulToday / $todayCalls) * 100 : 100;
+        // API calls for today, using DB facade
+        $todayCalls = DB::table('api_usage')->whereDate('created_at', today())->count();
         
         return [
             'title' => 'API Calls Today',
             'value' => number_format($todayCalls),
-            'today_count' => $todayCalls,
-            'yesterday_count' => $yesterdayCalls,
-            'successful_today' => $successfulToday,
-            'failed_today' => $failedToday,
-            'success_rate' => round($successRate, 1),
-            'change' => $percentageChange['formatted'],
-            'trend' => $percentageChange['trend'],
+            'change' => '',
+            'trend' => 'up',
             'icon' => 'Activity',
             'color' => 'orange'
         ];

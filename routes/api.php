@@ -228,7 +228,7 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
 });
 
 // Admin Routes (require admin role and enhanced security)
-Route::prefix('admin')->middleware(['auth:sanctum', 'enhanced.token.security', 'admin.role.guard'])->group(function () {
+Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.security', 'admin.role.guard'])->group(function () {
     // Admin Dashboard
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getMetrics']);
@@ -254,5 +254,3 @@ Route::prefix('admin')->middleware(['auth:sanctum', 'enhanced.token.security', '
     // System Settings - SettingsController not yet created
     // Security Logs - SecurityController not yet created
 });
-
-
