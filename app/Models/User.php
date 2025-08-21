@@ -49,6 +49,8 @@ class User extends Authenticatable
         'cancellation_confirmed',
         'deletion_scheduled_at',
         'deletion_reason',
+        'last_active_at',
+        'is_suspended',
     ];
 
     /**
@@ -81,6 +83,8 @@ class User extends Authenticatable
             'cancellation_effective_at' => 'datetime',
             'cancellation_confirmed' => 'boolean',
             'deletion_scheduled_at' => 'datetime',
+            'last_active_at' => 'datetime',
+            'is_suspended' => 'boolean',
         ];
     }
 

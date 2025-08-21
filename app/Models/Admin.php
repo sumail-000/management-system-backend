@@ -38,6 +38,7 @@ class Admin extends Authenticatable
         'two_factor_enabled',
         'two_factor_secret',
         'login_notifications_enabled',
+        'last_active_at',
     ];
 
     /**
@@ -61,6 +62,7 @@ class Admin extends Authenticatable
         'allowed_ips' => 'array',
         'two_factor_enabled' => 'boolean',
         'login_notifications_enabled' => 'boolean',
+        'last_active_at' => 'datetime',
     ];
 
     /**

@@ -31,7 +31,7 @@ use Illuminate\Support\Facades\Route;
 // Authentication Routes
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
-Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', 'update.activity'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutFromAllDevices']);
@@ -228,7 +228,7 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
 });
 
 // Admin Routes (require admin role and enhanced security)
-Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.security', 'admin.role.guard'])->group(function () {
+Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.security', 'admin.role.guard', 'update.activity'])->group(function () {
     // Admin Dashboard
     Route::prefix('dashboard')->group(function () {
         Route::get('/metrics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getMetrics']);
@@ -248,8 +248,16 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
         Route::get('/current-ip', [\App\Http\Controllers\Api\Admin\ProfileController::class, 'getCurrentIp']);
     });
     
+    // User Management
+    Route::prefix('users')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Admin\UserController::class, 'index']);
+        Route::get('/stats', [\App\Http\Controllers\Api\Admin\UserController::class, 'stats']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\Admin\UserController::class, 'show']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\Admin\UserController::class, 'destroy']);
+        Route::patch('/{id}/suspend', [\App\Http\Controllers\Api\Admin\UserController::class, 'suspend']);
+    });
+
     // TODO: Add these controllers when they are implemented
-    // User Management - UserController not yet created
     // System Analytics - AnalyticsController not yet created
     // System Settings - SettingsController not yet created
     // Security Logs - SecurityController not yet created

@@ -29,6 +29,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'edamam.api' => \App\Http\Middleware\EdamamApiMiddleware::class,
             'admin.role.guard' => \App\Http\Middleware\AdminRoleGuard::class,
             'enhanced.token.security' => \App\Http\Middleware\EnhancedTokenSecurity::class,
+            'update.activity' => \App\Http\Middleware\UpdateLastActiveAt::class,
         ]);
         
         // Configure authentication to return JSON responses for API routes

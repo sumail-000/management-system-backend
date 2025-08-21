@@ -22,11 +22,19 @@ class DashboardController extends Controller
      */
     public function getMetrics(Request $request): JsonResponse
     {
+        // Define date ranges for calculations
+        $currentEnd = now();
+        $previousMonthEnd = now()->subMonth()->endOfMonth();
+
+        $currentMonthStart = now()->startOfMonth();
+        $previousMonthStart = now()->subMonth()->startOfMonth();
+
         $metrics = [
-            'total_users' => $this->getTotalUsersMetric(),
-            'active_products' => $this->getActiveProductsMetric(),
-            'monthly_revenue' => $this->getMonthlyRevenueMetric(),
+            'total_users' => $this->getTotalUsersMetric($currentEnd, $previousMonthEnd),
+            'active_products' => $this->getActiveProductsMetric($currentEnd, $previousMonthEnd),
+            'monthly_revenue' => $this->getMonthlyRevenueMetric($currentMonthStart, $currentEnd, $previousMonthStart, $previousMonthEnd),
             'api_calls_today' => $this->getApiCallsTodayMetric(),
+            'user_distribution' => $this->getUserDistribution(),
         ];
 
         return response()->json([
@@ -38,16 +46,21 @@ class DashboardController extends Controller
     /**
      * Get total users metric
      */
-    private function getTotalUsersMetric(): array
+    private function getTotalUsersMetric(Carbon $currentEnd, Carbon $previousMonthEnd): array
     {
-        // All-time total users, using DB facade to bypass any model scopes/issues
-        $totalUsers = DB::table('users')->count();
+        // All-time total users up to now
+        $currentTotalUsers = DB::table('users')->where('created_at', '<=', $currentEnd)->count();
+        
+        // All-time total users up to the end of last month
+        $previousTotalUsers = DB::table('users')->where('created_at', '<=', $previousMonthEnd)->count();
+
+        $percentageChange = $this->calculatePercentageChange($currentTotalUsers, $previousTotalUsers);
         
         return [
             'title' => 'Total Users',
-            'value' => number_format($totalUsers),
-            'change' => 'N/A',
-            'trend' => 'up',
+            'value' => number_format($currentTotalUsers),
+            'change' => $percentageChange['formatted'],
+            'trend' => $percentageChange['trend'],
             'icon' => 'Users',
             'color' => 'blue'
         ];
@@ -56,16 +69,21 @@ class DashboardController extends Controller
     /**
      * Get active products metric
      */
-    private function getActiveProductsMetric(): array
+    private function getActiveProductsMetric(Carbon $currentEnd, Carbon $previousMonthEnd): array
     {
-        // All-time total active (not soft-deleted) products, using DB facade
-        $totalProducts = DB::table('products')->whereNull('deleted_at')->count();
+        // All-time total active products up to now
+        $currentTotalProducts = DB::table('products')->where('created_at', '<=', $currentEnd)->whereNull('deleted_at')->count();
         
+        // All-time total active products up to the end of last month
+        $previousTotalProducts = DB::table('products')->where('created_at', '<=', $previousMonthEnd)->whereNull('deleted_at')->count();
+
+        $percentageChange = $this->calculatePercentageChange($currentTotalProducts, $previousTotalProducts);
+
         return [
             'title' => 'Active Products',
-            'value' => number_format($totalProducts),
-            'change' => 'N/A',
-            'trend' => 'up',
+            'value' => number_format($currentTotalProducts),
+            'change' => $percentageChange['formatted'],
+            'trend' => $percentageChange['trend'],
             'icon' => 'Package',
             'color' => 'green'
         ];
@@ -74,21 +92,30 @@ class DashboardController extends Controller
     /**
      * Get monthly revenue metric for the current calendar month
      */
-    private function getMonthlyRevenueMetric(): array
+    private function getMonthlyRevenueMetric(Carbon $currentMonthStart, Carbon $currentEnd, Carbon $previousMonthStart, Carbon $previousMonthEnd): array
     {
-        // Revenue for the current calendar month, using DB facade
+        // Revenue for the current calendar month to date
         $currentRevenue = DB::table('billing_history')
-            ->whereBetween('created_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->whereBetween('created_at', [$currentMonthStart, $currentEnd])
             ->where('status', 'paid')
             ->sum('amount');
             
+        // Revenue for the previous full month
+        $previousRevenue = DB::table('billing_history')
+            ->whereBetween('created_at', [$previousMonthStart, $previousMonthEnd])
+            ->where('status', 'paid')
+            ->sum('amount');
+
         $currentRevenue = $currentRevenue ?: 0;
+        $previousRevenue = $previousRevenue ?: 0;
+
+        $percentageChange = $this->calculatePercentageChange($currentRevenue, $previousRevenue);
 
         return [
             'title' => 'Monthly Revenue',
             'value' => '$' . number_format($currentRevenue, 2),
-            'change' => '',
-            'trend' => 'up',
+            'change' => $percentageChange['formatted'],
+            'trend' => $percentageChange['trend'],
             'icon' => 'DollarSign',
             'color' => 'purple'
         ];
@@ -99,17 +126,45 @@ class DashboardController extends Controller
      */
     private function getApiCallsTodayMetric(): array
     {
-        // API calls for today, using DB facade
+        // API calls for today
         $todayCalls = DB::table('api_usage')->whereDate('created_at', today())->count();
+        // API calls for yesterday
+        $yesterdayCalls = DB::table('api_usage')->whereDate('created_at', today()->subDay())->count();
+
+        $percentageChange = $this->calculatePercentageChange($todayCalls, $yesterdayCalls);
         
         return [
             'title' => 'API Calls Today',
             'value' => number_format($todayCalls),
-            'change' => '',
-            'trend' => 'up',
+            'change' => $percentageChange['formatted'],
+            'trend' => $percentageChange['trend'],
             'icon' => 'Activity',
             'color' => 'orange'
         ];
+    }
+
+    /**
+     * Get user distribution by membership plan
+     */
+    private function getUserDistribution(): array
+    {
+        $distribution = DB::table('users')
+            ->join('membership_plans', 'users.membership_plan_id', '=', 'membership_plans.id')
+            ->select('membership_plans.name', DB::raw('count(*) as value'))
+            ->groupBy('membership_plans.name')
+            ->get()
+            ->map(function ($row) {
+                // Assign colors based on plan name for consistency with frontend
+                $colors = [
+                    'Basic' => '#e2e8f0',
+                    'Pro' => '#3b82f6',
+                    'Enterprise' => '#8b5cf6',
+                ];
+                $row->color = $colors[$row->name] ?? '#6b7280';
+                return $row;
+            });
+
+        return $distribution->toArray();
     }
 
     /**
@@ -117,23 +172,24 @@ class DashboardController extends Controller
      */
     private function calculatePercentageChange(float $current, float $previous): array
     {
-        if ($previous == 0) {
-            if ($current > 0) {
-                return [
-                    'formatted' => '+100%',
-                    'trend' => 'up',
-                    'raw' => 100
-                ];
-            }
+        if ($current == $previous) {
             return [
-                'formatted' => '0%',
-                'trend' => 'up',
+                'formatted' => '0.0%',
+                'trend' => 'neutral',
                 'raw' => 0
             ];
         }
+
+        if ($previous == 0) {
+            return [
+                'formatted' => '+100.0%',
+                'trend' => 'up',
+                'raw' => 100
+            ];
+        }
         
-        $change = (($current - $previous) / $previous) * 100;
-        $trend = $change >= 0 ? 'up' : 'down';
+        $change = (($current - $previous) / abs($previous)) * 100;
+        $trend = $change > 0 ? 'up' : 'down';
         $formatted = ($change >= 0 ? '+' : '') . number_format($change, 1) . '%';
         
         return [
@@ -196,32 +252,23 @@ class DashboardController extends Controller
      */
     private function getUsersAnalytics(Carbon $startDate, Carbon $endDate, int $days): array
     {
+        $results = DB::table('users')
+            ->select(DB::raw('DATE(created_at) as date'), DB::raw('count(*) as value'))
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get()
+            ->keyBy('date');
+
         $data = [];
-        $interval = $days > 90 ? 'week' : 'day';
-        
-        if ($interval === 'day') {
-            for ($i = 0; $i < $days; $i++) {
-                $date = $startDate->copy()->addDays($i);
-                $count = User::whereDate('created_at', $date)->count();
-                $data[] = [
-                    'date' => $date->format('Y-m-d'),
-                    'label' => $date->format('M j'),
-                    'value' => $count
-                ];
-            }
-        } else {
-            // Weekly aggregation for longer periods
-            $weeks = ceil($days / 7);
-            for ($i = 0; $i < $weeks; $i++) {
-                $weekStart = $startDate->copy()->addWeeks($i)->startOfWeek();
-                $weekEnd = $weekStart->copy()->endOfWeek();
-                $count = User::whereBetween('created_at', [$weekStart, $weekEnd])->count();
-                $data[] = [
-                    'date' => $weekStart->format('Y-m-d'),
-                    'label' => $weekStart->format('M j'),
-                    'value' => $count
-                ];
-            }
+        for ($i = 0; $i < $days; $i++) {
+            $date = $startDate->copy()->addDays($i);
+            $dateString = $date->format('Y-m-d');
+            $data[] = [
+                'date' => $dateString,
+                'label' => $date->format('M j'),
+                'value' => $results->get($dateString)->value ?? 0,
+            ];
         }
         
         return $data;
@@ -268,35 +315,24 @@ class DashboardController extends Controller
      */
     private function getRevenueAnalytics(Carbon $startDate, Carbon $endDate, int $days): array
     {
+        $results = DB::table('billing_history')
+            ->select(DB::raw('DATE(created_at) as date'), DB::raw('sum(amount) as value'))
+            ->where('status', 'paid')
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get()
+            ->keyBy('date');
+
         $data = [];
-        $interval = $days > 90 ? 'week' : 'day';
-        
-        if ($interval === 'day') {
-            for ($i = 0; $i < $days; $i++) {
-                $date = $startDate->copy()->addDays($i);
-                $amount = BillingHistory::whereDate('created_at', $date)
-                    ->where('status', 'paid')
-                    ->sum('amount');
-                $data[] = [
-                    'date' => $date->format('Y-m-d'),
-                    'label' => $date->format('M j'),
-                    'value' => (float) $amount
-                ];
-            }
-        } else {
-            $weeks = ceil($days / 7);
-            for ($i = 0; $i < $weeks; $i++) {
-                $weekStart = $startDate->copy()->addWeeks($i)->startOfWeek();
-                $weekEnd = $weekStart->copy()->endOfWeek();
-                $amount = BillingHistory::whereBetween('created_at', [$weekStart, $weekEnd])
-                    ->where('status', 'paid')
-                    ->sum('amount');
-                $data[] = [
-                    'date' => $weekStart->format('Y-m-d'),
-                    'label' => $weekStart->format('M j'),
-                    'value' => (float) $amount
-                ];
-            }
+        for ($i = 0; $i < $days; $i++) {
+            $date = $startDate->copy()->addDays($i);
+            $dateString = $date->format('Y-m-d');
+            $data[] = [
+                'date' => $dateString,
+                'label' => $date->format('M j'),
+                'value' => (float) ($results->get($dateString)->value ?? 0),
+            ];
         }
         
         return $data;
