@@ -227,6 +227,15 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
 
     // Label generation logging
     Route::post('/labels/log-generation', [App\Http\Controllers\Api\LabelController::class, 'logGeneration']);
+
+    // Support Center
+    Route::prefix('support')->group(function () {
+        Route::get('/tickets', [App\Http\Controllers\Api\SupportController::class, 'listTickets']);
+        Route::post('/tickets/start', [App\Http\Controllers\Api\SupportController::class, 'startTicket']);
+        Route::post('/tickets/{id}/finalize', [App\Http\Controllers\Api\SupportController::class, 'finalizeTicket']);
+        Route::delete('/tickets/{id}/cancel', [App\Http\Controllers\Api\SupportController::class, 'cancelTicket']);
+        Route::get('/faqs', [App\Http\Controllers\Api\SupportController::class, 'listFaqs']);
+    });
     // Other protected routes will be added here
 });
 
