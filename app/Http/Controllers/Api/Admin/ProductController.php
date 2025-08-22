@@ -75,10 +75,12 @@ class ProductController extends Controller
     {
         $base = Product::query()->whereNull('deleted_at');
         $total = (clone $base)->count();
-        $public = (clone $base)->where('is_public', true)->count();
-        $published = (clone $base)->where('status', 'published')->count();
-        $draft = (clone $base)->where('status', 'draft')->count();
         $flagged = (clone $base)->where('is_flagged', true)->count();
+        // Exclude flagged from other buckets per business rule
+        $nonFlagged = (clone $base)->where('is_flagged', false);
+        $public = (clone $nonFlagged)->where('is_public', true)->count();
+        $published = (clone $nonFlagged)->where('status', 'published')->count();
+        $draft = (clone $nonFlagged)->where('status', 'draft')->count();
 
         return response()->json([
             'success' => true,
@@ -99,6 +101,10 @@ class ProductController extends Controller
     {
         $product = Product::query()->findOrFail($id);
         $product->is_flagged = !$product->is_flagged;
+        // Business rule: flagged products are not public
+        if ($product->is_flagged) {
+            $product->is_public = false;
+        }
         $product->save();
 
         return response()->json([
@@ -106,6 +112,8 @@ class ProductController extends Controller
             'data' => [
                 'id' => $product->id,
                 'is_flagged' => $product->is_flagged,
+                'is_public' => $product->is_public,
+                'status' => $product->status,
             ],
             'message' => $product->is_flagged ? 'Product flagged' : 'Product unflagged',
         ]);
