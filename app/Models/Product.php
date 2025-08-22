@@ -43,6 +43,7 @@ class Product extends Model
         'is_public' => 'boolean',
         'is_pinned' => 'boolean',
         'is_favorite' => 'boolean',
+        'is_flagged' => 'boolean',
         'ingredients_data' => 'array',
         'nutrition_data' => 'array',
         'serving_configuration' => 'array',

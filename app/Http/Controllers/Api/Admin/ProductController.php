@@ -23,13 +23,15 @@ class ProductController extends Controller
             $query->where('name', 'like', $searchTerm);
         }
 
-        // Filter by status: published | draft | public
+        // Filter by status: published | draft | public | flagged
         if ($request->filled('status')) {
-            $status = $request->string('status');
+            $status = (string) $request->input('status');
             if (in_array($status, ['published', 'draft'])) {
                 $query->where('status', $status);
             } elseif ($status === 'public') {
                 $query->where('is_public', true);
+            } elseif (in_array($status, ['flag', 'flagged'])) {
+                $query->where('is_flagged', true);
             }
         }
 
@@ -44,7 +46,7 @@ class ProductController extends Controller
         // Sorting
         $sortBy = $request->input('sort_by', 'created_at');
         $sortOrder = $request->input('sort_order', 'desc');
-        $allowedSorts = ['created_at', 'updated_at', 'name', 'status', 'is_public'];
+        $allowedSorts = ['created_at', 'updated_at', 'name', 'status', 'is_public', 'is_flagged'];
         if (!in_array($sortBy, $allowedSorts)) {
             $sortBy = 'created_at';
         }
@@ -71,10 +73,12 @@ class ProductController extends Controller
      */
     public function metrics(Request $request): JsonResponse
     {
-        $total = Product::query()->whereNull('deleted_at')->count();
-        $public = Product::query()->where('is_public', true)->whereNull('deleted_at')->count();
-        $published = Product::query()->where('status', 'published')->whereNull('deleted_at')->count();
-        $draft = Product::query()->where('status', 'draft')->whereNull('deleted_at')->count();
+        $base = Product::query()->whereNull('deleted_at');
+        $total = (clone $base)->count();
+        $public = (clone $base)->where('is_public', true)->count();
+        $published = (clone $base)->where('status', 'published')->count();
+        $draft = (clone $base)->where('status', 'draft')->count();
+        $flagged = (clone $base)->where('is_flagged', true)->count();
 
         return response()->json([
             'success' => true,
@@ -83,8 +87,27 @@ class ProductController extends Controller
                 'public' => $public,
                 'published' => $published,
                 'draft' => $draft,
-                // 'flagged' => 0 // reserved for future moderation flagging feature
+                'flagged' => $flagged,
             ]
+        ]);
+    }
+
+    /**
+     * Toggle flagged status for a product
+     */
+    public function toggleFlag(int $id): JsonResponse
+    {
+        $product = Product::query()->findOrFail($id);
+        $product->is_flagged = !$product->is_flagged;
+        $product->save();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $product->id,
+                'is_flagged' => $product->is_flagged,
+            ],
+            'message' => $product->is_flagged ? 'Product flagged' : 'Product unflagged',
         ]);
     }
 }
