@@ -257,6 +257,10 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
         Route::patch('/{id}/suspend', [\App\Http\Controllers\Api\Admin\UserController::class, 'suspend']);
     });
 
+    // Products Management
+    Route::get('/products', [\App\Http\Controllers\Api\Admin\ProductController::class, 'index']);
+    Route::get('/products/metrics', [\App\Http\Controllers\Api\Admin\ProductController::class, 'metrics']);
+
     // TODO: Add these controllers when they are implemented
     // System Analytics - AnalyticsController not yet created
     // System Settings - SettingsController not yet created
