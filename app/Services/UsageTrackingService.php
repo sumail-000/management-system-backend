@@ -45,9 +45,9 @@ class UsageTrackingService
                 ->where('products.user_id', $user->id)
                 ->count();
 
-            // Fallback behavior maintains current values if no labels recorded yet
-            $labelsThisMonth = $labelsThisMonthFromTable > 0 ? $labelsThisMonthFromTable : $productsThisMonth;
-            $totalLabels = $totalLabelsFromTable > 0 ? $totalLabelsFromTable : $totalProducts;
+            // Strict labels table counts (no fallback to products)
+            $labelsThisMonth = $labelsThisMonthFromTable;
+            $totalLabels = $totalLabelsFromTable;
             
             // Get QR code analytics using the QrCodeAnalytics model
             $totalQrCodesCreated = QrCodeAnalytics::getTotalCreated($user->id);

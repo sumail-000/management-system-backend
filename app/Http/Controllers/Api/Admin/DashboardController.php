@@ -253,7 +253,8 @@ class DashboardController extends Controller
             default => 30
         };
 
-        $startDate = now()->subDays($days)->startOfDay();
+        // Include today in the window: e.g., 30d => from 29 days ago through today (inclusive)
+        $startDate = now()->subDays($days - 1)->startOfDay();
         $endDate = now()->endOfDay();
 
         return match($metric) {
@@ -661,7 +662,8 @@ class DashboardController extends Controller
             $end = Carbon::parse($request->input('end_date'))->endOfDay();
         } else {
             $end = now()->endOfDay();
-            $start = now()->subDays(30)->startOfDay();
+            // Use a true 30-day inclusive window ending today (today + previous 29 days)
+            $start = now()->subDays(29)->startOfDay();
         }
         $days = $start->diffInDays($end) + 1;
         $prevEnd = $start->copy()->subDay()->endOfDay();

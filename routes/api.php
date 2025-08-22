@@ -224,6 +224,9 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
         Route::get('/{id}/usage', [CustomIngredientController::class, 'getUsage']);
         Route::post('/{id}/increment-usage', [CustomIngredientController::class, 'incrementUsage']);
     });
+
+    // Label generation logging
+    Route::post('/labels/log-generation', [App\Http\Controllers\Api\LabelController::class, 'logGeneration']);
     // Other protected routes will be added here
 });
 
