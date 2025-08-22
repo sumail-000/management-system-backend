@@ -234,6 +234,10 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
         Route::get('/metrics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getMetrics']);
         Route::get('/analytics', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getAnalytics']);
         Route::get('/system-health', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getSystemHealth']);
+        Route::get('/subscription-distribution', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getSubscriptionDistribution']);
+        Route::get('/user-growth', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getUserGrowth']);
+        Route::get('/api-usage-by-plan', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getApiUsageByPlan']);
+        Route::get('/feature-usage', [\App\Http\Controllers\Api\Admin\DashboardController::class, 'getFeatureUsage']);
     });
     
     // Admin Profile

@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Product;
 use App\Models\QrCodeAnalytics;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class UsageTrackingService
@@ -31,10 +32,22 @@ class UsageTrackingService
             // Count total products (for overall tracking)
             $totalProducts = Product::where('user_id', $user->id)->count();
             
-            // For labels, we'll count based on products for now
-            // In the future, this could be a separate labels table
-            $labelsThisMonth = $productsThisMonth; // Assuming 1 label per product
-            $totalLabels = $totalProducts;
+            // Labels: prefer actual labels table counts by joining to user's products
+            // Safe fallback to previous approximation to avoid breaking existing dashboards
+            $labelsThisMonthFromTable = DB::table('labels')
+                ->join('products', 'labels.product_id', '=', 'products.id')
+                ->where('products.user_id', $user->id)
+                ->where('labels.created_at', '>=', $currentMonth)
+                ->count();
+
+            $totalLabelsFromTable = DB::table('labels')
+                ->join('products', 'labels.product_id', '=', 'products.id')
+                ->where('products.user_id', $user->id)
+                ->count();
+
+            // Fallback behavior maintains current values if no labels recorded yet
+            $labelsThisMonth = $labelsThisMonthFromTable > 0 ? $labelsThisMonthFromTable : $productsThisMonth;
+            $totalLabels = $totalLabelsFromTable > 0 ? $totalLabelsFromTable : $totalProducts;
             
             // Get QR code analytics using the QrCodeAnalytics model
             $totalQrCodesCreated = QrCodeAnalytics::getTotalCreated($user->id);
