@@ -260,6 +260,8 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
     // Products Management
     Route::get('/products', [\App\Http\Controllers\Api\Admin\ProductController::class, 'index']);
     Route::get('/products/metrics', [\App\Http\Controllers\Api\Admin\ProductController::class, 'metrics']);
+    Route::get('/products/{id}', [\App\Http\Controllers\Api\Admin\ProductController::class, 'show']);
+    Route::delete('/products/{id}', [\App\Http\Controllers\Api\Admin\ProductController::class, 'destroy']);
     Route::patch('/products/{id}/toggle-flag', [\App\Http\Controllers\Api\Admin\ProductController::class, 'toggleFlag']);
 
     // TODO: Add these controllers when they are implemented

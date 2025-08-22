@@ -118,4 +118,32 @@ class ProductController extends Controller
             'message' => $product->is_flagged ? 'Product flagged' : 'Product unflagged',
         ]);
     }
+
+    /**
+     * Show full product details for admin
+     */
+    public function show(int $id): JsonResponse
+    {
+        $product = Product::with(['user.membershipPlan', 'category'])
+            ->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $product,
+        ]);
+    }
+
+    /**
+     * Permanently delete a product
+     */
+    public function destroy(int $id): JsonResponse
+    {
+        $product = Product::withTrashed()->findOrFail($id);
+        $product->forceDelete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Product permanently deleted',
+        ]);
+    }
 }
