@@ -282,6 +282,15 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
     Route::delete('/products/{id}', [\App\Http\Controllers\Api\Admin\ProductController::class, 'destroy']);
     Route::patch('/products/{id}/toggle-flag', [\App\Http\Controllers\Api\Admin\ProductController::class, 'toggleFlag']);
 
+    // Reports
+    Route::prefix('reports')->group(function () {
+        Route::get('/user-activity', [\App\Http\Controllers\Api\Admin\ReportsController::class, 'userActivity']);
+        Route::get('/revenue-summary', [\App\Http\Controllers\Api\Admin\ReportsController::class, 'revenueSummary']);
+        Route::get('/product-performance', [\App\Http\Controllers\Api\Admin\ReportsController::class, 'productPerformance']);
+        Route::get('/api-usage', [\App\Http\Controllers\Api\Admin\ReportsController::class, 'apiUsage']);
+        Route::get('/platform-growth', [\App\Http\Controllers\Api\Admin\ReportsController::class, 'platformGrowth']);
+    });
+
     // Support Management
     Route::prefix('support')->group(function () {
         Route::get('/tickets', [\App\Http\Controllers\Api\Admin\SupportController::class, 'index']);
@@ -302,8 +311,4 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
     // Announcements (broadcast to all users)
     Route::post('/announcements', [\App\Http\Controllers\Api\Admin\AnnouncementController::class, 'broadcast']);
 
-    // TODO: Add these controllers when they are implemented
-    // System Analytics - AnalyticsController not yet created
-    // System Settings - SettingsController not yet created
-    // Security Logs - SecurityController not yet created
 });
