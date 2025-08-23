@@ -21,6 +21,7 @@ return [
 
     'allowed_origins' => array_filter([
         env('FRONTEND_URL', 'http://localhost:8080'),
+        env('FRONTEND_PUBLIC_URL'),
         env('APP_URL', 'http://localhost:8000'),
         'http://localhost:8080',
         'http://localhost:8081',
@@ -30,7 +31,8 @@ return [
     ]),
 
     'allowed_origins_patterns' => [
-        // No patterns needed for production
+        // Allow any Cloudflare Tunnel URL subdomain (ephemeral)
+        '#^https://.*\\.trycloudflare\\.com$#',
     ],
 
     'allowed_headers' => ['*'],

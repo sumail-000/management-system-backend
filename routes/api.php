@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\FoodController;
 use App\Http\Controllers\NutritionController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\Api\TeamMemberController;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -57,6 +58,9 @@ Route::post('/password/email', [AuthController::class, 'sendPasswordResetOtp']);
 // Public Routes
 Route::get('/products/public', [ProductController::class, 'public']);
 Route::get('/products/public/{id}', [ProductController::class, 'getPublicById']);
+
+// Team Member Authentication (separate from user)
+Route::post('/team-members/login', [TeamMemberController::class, 'login']);
 
 
 // QR Code public routes
@@ -170,6 +174,9 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
         Route::post('/test-data', [BillingController::class, 'createTestBillingHistory']);
     });
     
+    // Team Members Management (Enterprise owner only)
+    Route::apiResource('team-members', TeamMemberController::class)->except(['show']);
+
     // User Settings Management
     Route::prefix('user')->group(function () {
         Route::get('/settings', [SettingsController::class, 'index']);
