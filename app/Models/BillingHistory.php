@@ -67,11 +67,9 @@ class BillingHistory extends Model
     {
         $year = now()->year;
         $month = now()->format('m');
-        $count = static::whereYear('created_at', $year)
-                      ->whereMonth('created_at', now()->month)
-                      ->count() + 1;
-        
-        return sprintf('INV-%d-%s-%03d', $year, $month, $count);
+        // Use a random suffix to avoid collisions under concurrency
+        $suffix = Str::upper(Str::random(6));
+        return sprintf('INV-%d-%s-%s', $year, $month, $suffix);
     }
 
     /**
