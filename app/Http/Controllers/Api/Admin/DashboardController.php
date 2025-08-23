@@ -14,9 +14,36 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use App\Models\RecentActivity;
 
 class DashboardController extends Controller
 {
+    /**
+     * Fetch recent activities for admin dashboard
+     */
+    public function getRecentActivities(Request $request): JsonResponse
+    {
+        $limit = (int) $request->input('limit', 10);
+        $items = RecentActivity::with(['user:id,name', 'product:id,name'])
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'id' => $row->id,
+                    'type' => $row->type,
+                    'user' => $row->user?->name,
+                    'product' => $row->product?->name,
+                    'plan' => $row->plan_name,
+                    'timestamp' => $row->created_at,
+                ];
+            });
+        return response()->json([
+            'success' => true,
+            'data' => $items
+        ]);
+    }
+
     /**
      * Get dashboard metrics
      */

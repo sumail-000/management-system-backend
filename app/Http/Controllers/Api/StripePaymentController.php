@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Exception;
+use App\Models\RecentActivity;
 
 class StripePaymentController extends Controller
 {
@@ -214,6 +215,11 @@ class StripePaymentController extends Controller
                 $user->stripe_customer_id,
                 $subscription->id
             );
+            
+            // Log recent activity for plan upgrade/purchase
+            try {
+                RecentActivity::logPlanUpgrade($user, $plan->name);
+            } catch (\Throwable $e) {}
             
             // Update membership plan if different
             if ($user->membership_plan_id !== $plan->id) {

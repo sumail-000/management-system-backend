@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\UsageTrackingService;
+use App\Models\RecentActivity;
 
 class ProductController extends Controller
 {
@@ -127,6 +128,11 @@ class ProductController extends Controller
                 'status' => 'draft',
                 'creation_step' => 'name_created',
             ]);
+
+            // Log recent activity for product creation
+            try {
+                RecentActivity::logProductCreated($user, $product);
+            } catch (\Throwable $e) {}
 
             return response()->json([
                 'success' => true,

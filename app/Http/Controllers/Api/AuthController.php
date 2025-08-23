@@ -29,6 +29,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Models\RecentActivity;
 
 
 
@@ -86,6 +87,13 @@ class AuthController extends Controller
                 'membership_plan' => $selectedPlan?->name,
                 'payment_status' => 'pending'
             ]);
+            
+            // Log recent activity: user signup with plan (Pro/Enterprise or Basic)
+            try {
+                if ($selectedPlan) {
+                    RecentActivity::logSignup($user, $selectedPlan->name);
+                }
+            } catch (\Throwable $e) {}
             
             // Handle trial setup based on selected plan
             if ($selectedPlan && $selectedPlan->name === 'Basic') {

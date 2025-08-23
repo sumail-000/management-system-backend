@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Models\RecentActivity;
+use App\Models\Notification;
 
 class ProductController extends Controller
 {
@@ -106,6 +108,26 @@ class ProductController extends Controller
             $product->is_public = false;
         }
         $product->save();
+
+        // Log recent activity and notify product owner on flag
+        try {
+            if ($product->is_flagged) {
+                RecentActivity::logProductFlagged($product);
+                // Create user-friendly notification for the product owner
+                Notification::create([
+                    'user_id' => $product->user_id,
+                    'type' => 'product_flagged',
+                    'title' => 'Your product was flagged',
+                    'message' => 'Your product "' . $product->name . '" was flagged by our moderation team. If you believe this is a mistake, please open a support ticket and reference this product.',
+                    'metadata' => [
+                        'product_id' => $product->id,
+                        'product_name' => $product->name,
+                        'flagged_at' => now()->toISOString(),
+                    ],
+                    'link' => '/support?ref=product_flagged&product_id=' . $product->id,
+                ]);
+            }
+        } catch (\Throwable $e) {}
 
         return response()->json([
             'success' => true,

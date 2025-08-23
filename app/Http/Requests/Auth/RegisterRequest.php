@@ -123,9 +123,14 @@ class RegisterRequest extends BaseRequest
         ];
         
         foreach ($suspiciousPatterns as $pattern) {
-            if (preg_match($pattern, $name) || preg_match($pattern, $email)) {
+            if (preg_match($pattern, $name)) {
                 throw ValidationException::withMessages([
-                    'name' => ['The provided information appears to be invalid.']
+                    'name' => ['Please enter your real name (avoid placeholder words like "test", "admin", or code terms).']
+                ]);
+            }
+            if (preg_match($pattern, $email)) {
+                throw ValidationException::withMessages([
+                    'email' => ['Please use a valid email address (avoid placeholder terms like "test" or "admin").']
                 ]);
             }
         }

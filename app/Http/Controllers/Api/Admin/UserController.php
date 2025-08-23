@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use App\Models\Notification;
 
 class UserController extends Controller
 {
@@ -166,6 +167,33 @@ class UserController extends Controller
             $user = User::findOrFail($id);
             $user->is_suspended = !$user->is_suspended;
             $user->save();
+
+            // Notify user of suspension status change
+            try {
+                if ($user->is_suspended) {
+                    Notification::create([
+                        'user_id' => $user->id,
+                        'type' => 'account_suspended',
+                        'title' => 'Account temporarily suspended',
+                        'message' => 'Your account has been temporarily suspended due to policy concerns. If you believe this is a mistake, please open a support ticket so our team can review.',
+                        'metadata' => [
+                            'suspended_at' => now()->toISOString(),
+                        ],
+                        'link' => '/support?ref=account_suspended',
+                    ]);
+                } else {
+                    Notification::create([
+                        'user_id' => $user->id,
+                        'type' => 'account_reinstated',
+                        'title' => 'Account reinstated',
+                        'message' => 'Your account has been reinstated. Thank you for your patience.',
+                        'metadata' => [
+                            'reinstated_at' => now()->toISOString(),
+                        ],
+                        'link' => '/dashboard',
+                    ]);
+                }
+            } catch (\Throwable $e) {}
 
             return response()->json([
                 'success' => true,
