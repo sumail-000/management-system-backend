@@ -9,6 +9,7 @@ use App\Models\Faq;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Models\Notification;
 
 class SupportController extends Controller
 {
@@ -68,6 +69,26 @@ class SupportController extends Controller
                 'is_admin' => false,
                 'message' => $data['message'],
             ]);
+
+            // Create a user-friendly notification for ticket creation
+            try {
+                Notification::create([
+                    'user_id' => $ticket->user_id,
+                    'type' => 'support_ticket_created',
+                    'title' => 'Support ticket created',
+                    'message' => 'Your ticket ' . ($ticket->ticket_number ?? '#' . $ticket->id) . ' has been created. Our support team will get back to you soon.',
+                    'metadata' => [
+                        'ticket_id' => $ticket->id,
+                        'ticket_number' => $ticket->ticket_number,
+                        'status' => $ticket->status,
+                        'priority' => $ticket->priority,
+                        'category' => $ticket->category,
+                    ],
+                    'link' => '/support/tickets/' . $ticket->id,
+                ]);
+            } catch (\Throwable $e) {
+                // Do not block ticket creation on notification errors
+            }
 
             return response()->json(['success' => true, 'data' => $ticket->fresh()], 201);
         });

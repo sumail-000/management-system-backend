@@ -299,6 +299,9 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
         Route::delete('/{id}', [\App\Http\Controllers\Api\Admin\FaqController::class, 'destroy']);
     });
 
+    // Announcements (broadcast to all users)
+    Route::post('/announcements', [\App\Http\Controllers\Api\Admin\AnnouncementController::class, 'broadcast']);
+
     // TODO: Add these controllers when they are implemented
     // System Analytics - AnalyticsController not yet created
     // System Settings - SettingsController not yet created
