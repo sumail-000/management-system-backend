@@ -90,4 +90,53 @@ class SupportController extends Controller
         $faqs = Faq::orderBy('id')->get(['id','question','answer','category']);
         return response()->json(['success' => true, 'data' => $faqs]);
     }
+
+    // Get a ticket detail with messages (user scope)
+    public function getTicket($id)
+    {
+        $ticket = SupportTicket::where('id', $id)->where('user_id', Auth::id())->firstOrFail();
+        $messages = SupportMessage::where('ticket_id', $ticket->id)
+            ->orderBy('created_at')
+            ->get(['id','message','is_admin','user_id','admin_id','created_at']);
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'ticket' => [
+                    'id' => $ticket->id,
+                    'ticket_number' => $ticket->ticket_number,
+                    'subject' => $ticket->subject,
+                    'category' => $ticket->category,
+                    'priority' => $ticket->priority,
+                    'status' => $ticket->status,
+                    'last_reply_at' => $ticket->last_reply_at,
+                    'created_at' => $ticket->created_at,
+                ],
+                'messages' => $messages,
+            ]
+        ]);
+    }
+
+    // Add a user message to a ticket
+    public function addMessage(Request $request, $id)
+    {
+        $data = $request->validate([
+            'message' => 'required|string',
+        ]);
+
+        return DB::transaction(function () use ($id, $data) {
+            $ticket = SupportTicket::where('id', $id)->where('user_id', Auth::id())->lockForUpdate()->firstOrFail();
+
+            SupportMessage::create([
+                'ticket_id' => $ticket->id,
+                'user_id' => Auth::id(),
+                'is_admin' => false,
+                'message' => $data['message'],
+            ]);
+
+            $ticket->last_reply_at = now();
+            $ticket->save();
+
+            return response()->json(['success' => true, 'message' => 'Message added']);
+        });
+    }
 }

@@ -235,6 +235,8 @@ Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', '
         Route::post('/tickets/{id}/finalize', [App\Http\Controllers\Api\SupportController::class, 'finalizeTicket']);
         Route::delete('/tickets/{id}/cancel', [App\Http\Controllers\Api\SupportController::class, 'cancelTicket']);
         Route::get('/faqs', [App\Http\Controllers\Api\SupportController::class, 'listFaqs']);
+        Route::get('/tickets/{id}', [App\Http\Controllers\Api\SupportController::class, 'getTicket']);
+        Route::post('/tickets/{id}/messages', [App\Http\Controllers\Api\SupportController::class, 'addMessage']);
     });
     // Other protected routes will be added here
 });
@@ -279,6 +281,23 @@ Route::prefix('admin')->middleware(['auth:sanctum,admin', 'enhanced.token.securi
     Route::get('/products/{id}', [\App\Http\Controllers\Api\Admin\ProductController::class, 'show']);
     Route::delete('/products/{id}', [\App\Http\Controllers\Api\Admin\ProductController::class, 'destroy']);
     Route::patch('/products/{id}/toggle-flag', [\App\Http\Controllers\Api\Admin\ProductController::class, 'toggleFlag']);
+
+    // Support Management
+    Route::prefix('support')->group(function () {
+        Route::get('/tickets', [\App\Http\Controllers\Api\Admin\SupportController::class, 'index']);
+        Route::get('/tickets/{id}', [\App\Http\Controllers\Api\Admin\SupportController::class, 'show']);
+        Route::post('/tickets/{id}/reply', [\App\Http\Controllers\Api\Admin\SupportController::class, 'reply']);
+        Route::patch('/tickets/{id}/status', [\App\Http\Controllers\Api\Admin\SupportController::class, 'updateStatus']);
+    });
+
+    // FAQ Management
+    Route::prefix('faqs')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\Admin\FaqController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\Admin\FaqController::class, 'store']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\Admin\FaqController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\Admin\FaqController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\Admin\FaqController::class, 'destroy']);
+    });
 
     // TODO: Add these controllers when they are implemented
     // System Analytics - AnalyticsController not yet created
