@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Route;
 // Authentication Routes
 Route::post('/auth/register', [AuthController::class, 'register']);
 Route::post('/auth/login', [AuthController::class, 'login']);
-Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', 'update.activity'])->group(function () {
+Route::middleware(['auth:sanctum', 'token.refresh', 'enhanced.token.security', 'update.activity', 'suspended.readonly'])->group(function () {
     Route::get('/auth/user', [AuthController::class, 'user']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/auth/logout-all-devices', [AuthController::class, 'logoutFromAllDevices']);

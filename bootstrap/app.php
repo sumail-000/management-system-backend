@@ -30,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.role.guard' => \App\Http\Middleware\AdminRoleGuard::class,
             'enhanced.token.security' => \App\Http\Middleware\EnhancedTokenSecurity::class,
             'update.activity' => \App\Http\Middleware\UpdateLastActiveAt::class,
+            'suspended.readonly' => \App\Http\Middleware\SuspendedReadOnly::class,
         ]);
         
         // Configure authentication to return JSON responses for API routes
